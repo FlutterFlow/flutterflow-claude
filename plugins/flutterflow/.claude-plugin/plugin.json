@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "flutterflow",
+  "displayName": "FlutterFlow",
+  "version": "0.1.1",
+  "description": "Agentic building with FlutterFlow. Auto-installs the FlutterFlow CLI (handles a missing Dart SDK gracefully) and provides a guided inspect → plan → run → validate workflow over `flutterflow ai`.",
+  "author": {
+    "name": "FlutterFlow",
+    "email": "support@flutterflow.io",
+    "url": "https://flutterflow.io"
+  },
+  "homepage": "https://pub.dev/packages/flutterflow_cli",
+  "repository": "https://github.com/flutterflow/flutterflow-claude",
+  "license": "MIT",
+  "keywords": ["flutterflow", "flutter", "dart", "agentic", "codegen", "mcp"],
+  "userConfig": {
+    "api_token": {
+      "type": "string",
+      "title": "FlutterFlow API token",
+      "description": "Create one at https://app.flutterflow.io/account. Used as FF_API_KEY to authenticate `flutterflow ai`. Stored securely by Claude Code and provided to the CLI environment — never committed to a repo.",
+      "sensitive": true
+    }
+  }
+}

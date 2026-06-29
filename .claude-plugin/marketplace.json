@@ -1,0 +1,17 @@
+{
+  "name": "flutterflow",
+  "description": "Official FlutterFlow plugins for Claude Code — get set up for agentic building in two commands.",
+  "owner": {
+    "name": "FlutterFlow",
+    "email": "support@flutterflow.io",
+    "url": "https://flutterflow.io"
+  },
+  "plugins": [
+    {
+      "name": "flutterflow",
+      "source": "./plugins/flutterflow",
+      "description": "Agentic building with FlutterFlow: auto-installs the FlutterFlow CLI (handles missing Dart) and adds a guided inspect → plan → run → validate workflow over `flutterflow ai`.",
+      "version": "0.1.1"
+    }
+  ]
+}
