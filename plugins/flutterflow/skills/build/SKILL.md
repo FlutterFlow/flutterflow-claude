@@ -17,7 +17,12 @@ Each Bash call starts fresh, so prefix commands with this preamble. It puts the 
 on PATH and loads the API key:
 
 ```bash
-export PATH="$HOME/.pub-cache/bin:$PATH"
+export PATH="$HOME/.pub-cache/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+for d in "$HOME/flutter/bin" "$HOME/development/flutter/bin" "$HOME/fvm/default/bin" \
+  "$HOME/.puro/envs/default/flutter/bin" /opt/flutter/bin /usr/local/flutter/bin; do
+  [ -d "$d" ] && PATH="$d:$PATH"
+done
+export PATH
 [ -f "$HOME/.config/flutterflow/claude-env.sh" ] && . "$HOME/.config/flutterflow/claude-env.sh"
 ```
 

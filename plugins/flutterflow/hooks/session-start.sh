@@ -9,7 +9,9 @@
 
 set -o pipefail
 
-log() { printf '[flutterflow] %s\n' "$1"; }
+# Human-facing notices go to stderr: SessionStart stdout is added to Claude's
+# context, and these banners/instructions are meant for the user, not the model.
+log() { printf '[flutterflow] %s\n' "$1" >&2; }
 
 # -----------------------------------------------------------------------------
 # 1. Make common Dart / Flutter / pub-cache bin dirs visible.
@@ -38,15 +40,21 @@ TOKEN="${CLAUDE_PLUGIN_OPTION_API_TOKEN:-}"
 ENV_DIR="$HOME/.config/flutterflow"
 ENV_FILE="$ENV_DIR/claude-env.sh"
 if [ -n "$TOKEN" ]; then
-  mkdir -p "$ENV_DIR" 2>/dev/null
+  # Create the dir/file with tight perms from the outset (umask 077) so the
+  # plaintext token is never momentarily group/world-readable.
+  ( umask 077; mkdir -p "$ENV_DIR" 2>/dev/null )
+  chmod 700 "$ENV_DIR" 2>/dev/null
   # `flutterflow ai` authenticates with FF_API_KEY; FLUTTERFLOW_API_TOKEN is the
   # legacy export-code/deploy-firebase var. Write both, set to the same token.
-  DESIRED="export FF_API_KEY=\"$TOKEN\"
-export FLUTTERFLOW_API_TOKEN=\"$TOKEN\""
+  # %q shell-quotes the value so a token containing a quote, $, backtick, or
+  # space is safe when the build skill sources this file (matches SKILL.md).
+  DESIRED=$(printf 'export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q' "$TOKEN" "$TOKEN")
   if [ ! -f "$ENV_FILE" ] || [ "$(cat "$ENV_FILE" 2>/dev/null)" != "$DESIRED" ]; then
-    printf '%s\n' "$DESIRED" > "$ENV_FILE"
-    chmod 600 "$ENV_FILE" 2>/dev/null
+    ( umask 077; printf '%s\n' "$DESIRED" > "$ENV_FILE" )
   fi
+  # Enforce perms on every run (not just on rewrite) so a pre-existing file with
+  # loose permissions is always re-secured.
+  chmod 600 "$ENV_FILE" 2>/dev/null
 fi
 
 # -----------------------------------------------------------------------------

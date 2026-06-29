@@ -1,1 +1,6 @@
 .DS_Store
+
+# FlutterFlow workspace artifacts — `flutterflow ai init` writes the API key into
+# .flutterflow/.env, so never let a workspace scaffolded inside the repo be committed.
+.flutterflow/
+.env

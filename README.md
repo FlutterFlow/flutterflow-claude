@@ -35,11 +35,12 @@ Two commands in Claude Code:
 > This repo is **private** in the `flutterflow` org, so installers need git access
 > to it — an authenticated `gh`/SSH login that belongs to the org. `flutterflow`
 > after the `@` is the marketplace **name** (from `.claude-plugin/marketplace.json`),
-> which here matches the repo name.
+> which here matches the GitHub **org** name — not the repo (`flutterflow-claude`).
 
 On enable, Claude Code prompts for the **FlutterFlow API token**
 (from <https://app.flutterflow.io/account>). On the next session start the CLI
-installs itself; after that the hook is a fast no-op.
+installs itself; after that the hook is a fast pass that just refreshes your PATH
+and the token file (no install work) — so a rotated token is picked up next session.
 
 ## Using it
 
@@ -59,10 +60,21 @@ legacy `FLUTTERFLOW_API_TOKEN` only feeds `export-code`/`deploy-firebase`).
 `userConfig` values are available to plugin subprocesses (like the SessionStart
 hook) but **not** to the Bash tool that runs `flutterflow`. So the hook bridges it:
 it reads the token from `CLAUDE_PLUGIN_OPTION_API_TOKEN` and writes
-`~/.config/flutterflow/claude-env.sh` (chmod 600) exporting both `FF_API_KEY` and
-`FLUTTERFLOW_API_TOKEN`, which the build skill sources before each command. If the
-token wasn't set at enable time, the skill collects it interactively and writes the
-same file.
+`~/.config/flutterflow/claude-env.sh` (dir `chmod 700`, file `chmod 600`) exporting
+both `FF_API_KEY` and `FLUTTERFLOW_API_TOKEN`, which the build skill sources before
+each command. If the token wasn't set at enable time, the skill collects it
+interactively and writes the same file.
+
+**Rotating or removing the token.** After updating it via `/plugin configure
+flutterflow@flutterflow`, **restart the session** — the hook only rewrites
+`claude-env.sh` on a new session start, so an already-running session keeps the old
+key until then. To remove it entirely, delete the bridged file and clear the CLI's
+cached credentials:
+
+```bash
+rm -f ~/.config/flutterflow/claude-env.sh
+flutterflow ai logout   # clears ~/.flutterflow/credentials.json
+```
 
 ## Optional: native MCP instead of the CLI skill
 
@@ -99,11 +111,16 @@ flutterflow-claude/
 
 Validate the manifests and try it without publishing:
 
-```bash
-# Validate the plugin manifest, skill frontmatter, and hooks.json
-claude plugin validate ./plugins/flutterflow --strict
+Validate the plugin manifest, skill frontmatter, and hooks.json from your shell:
 
-# Add this repo as a marketplace from a local path, then install
+```bash
+claude plugin validate ./plugins/flutterflow --strict
+```
+
+Then, inside Claude Code (these are slash commands, not shell commands), add this
+repo as a marketplace from a local path and install:
+
+```text
 /plugin marketplace add /absolute/path/to/flutterflow-claude
 /plugin install flutterflow@flutterflow
 ```
@@ -113,4 +130,6 @@ After editing the marketplace, users refresh with `/plugin marketplace update`.
 ## Publishing
 
 Push this repo to GitHub (or GitLab) and share the two install commands. Bump
-`version` in both `plugin.json` and the marketplace entry to ship updates.
+`version` in `plugin.json` to ship updates — it is the single source of truth.
+(Claude Code always reads the version from `plugin.json`; the marketplace entry
+deliberately omits `version` so the two can't drift.)

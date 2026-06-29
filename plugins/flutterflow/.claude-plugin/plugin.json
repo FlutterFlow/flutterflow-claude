@@ -3,7 +3,7 @@
   "name": "flutterflow",
   "displayName": "FlutterFlow",
   "version": "0.1.1",
-  "description": "Agentic building with FlutterFlow. Auto-installs the FlutterFlow CLI (handles a missing Dart SDK gracefully) and provides a guided inspect → plan → run → validate workflow over `flutterflow ai`.",
+  "description": "Agentic building with FlutterFlow. Auto-installs the FlutterFlow CLI (handles a missing Dart SDK gracefully) and provides a guided orient → validate → apply workflow over `flutterflow ai`.",
   "author": {
     "name": "FlutterFlow",
     "email": "support@flutterflow.io",
