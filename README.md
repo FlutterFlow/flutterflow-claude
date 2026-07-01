@@ -27,19 +27,24 @@ The SessionStart hook is a POSIX shell script run with `bash`, so **macOS and Li
 are supported out of the box**. On Windows it needs a `bash` on PATH (Git Bash or
 WSL); without one the hook no-ops and you'd drive `flutterflow ai` manually.
 
-## Install (what your users run)
+## Install
 
-Two commands in Claude Code:
+Install directly from this marketplace repo — two commands in Claude Code:
 
 ```text
-/plugin marketplace add flutterflow/flutterflow-claude
+/plugin marketplace add FlutterFlow/flutterflow-claude
 /plugin install flutterflow@flutterflow
 ```
 
-> This repo is **private** in the `flutterflow` org, so installers need git access
-> to it — an authenticated `gh`/SSH login that belongs to the org. `flutterflow`
-> after the `@` is the marketplace **name** (from `.claude-plugin/marketplace.json`),
-> which here matches the GitHub **org** name — not the repo (`flutterflow-claude`).
+> `FlutterFlow/flutterflow-claude` is the public GitHub repo Claude Code clones.
+> `flutterflow` after the `@` is the marketplace **name** (from
+> `.claude-plugin/marketplace.json`), which matches the GitHub **org** name — not
+> the repo (`flutterflow-claude`).
+
+Once accepted into the [Claude plugin directory](https://claude.com/plugins-for/cowork),
+the plugin is also discoverable by every Claude Code user through the built-in
+`claude-plugins-official` marketplace (browse it with `/plugin`) — no
+`marketplace add` step required.
 
 On enable, Claude Code prompts for the **FlutterFlow API token**
 (from <https://app.flutterflow.io/account>). On the next session start the CLI
@@ -144,9 +149,17 @@ repo as a marketplace from a local path and install:
 
 After editing the marketplace, users refresh with `/plugin marketplace update`.
 
-## Publishing
+## Publishing & updates
 
-Push this repo to GitHub (or GitLab) and share the two install commands. Bump
-`version` in `plugin.json` to ship updates — it is the single source of truth.
+This repo is public, so it can be installed directly (above) and submitted to the
+[Claude plugin directory](https://claude.com/plugins-for/cowork) via the in-app forms
+(Console: <https://platform.claude.com/plugins/submit>). Run `claude plugin validate`
+before submitting.
+
+After the plugin is published in the directory, **updates pushed to `main` are picked
+up automatically** — the directory's CI mirrors changes and re-screens each update, so
+you don't re-submit the form.
+
+Bump `version` in `plugin.json` to ship an update — it is the single source of truth.
 (Claude Code always reads the version from `plugin.json`; the marketplace entry
 deliberately omits `version` so the two can't drift.)
