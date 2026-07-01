@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    name: Manifests, lint & security properties
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate JSON manifests
+        run: |
+          for f in \
+            .claude-plugin/marketplace.json \
+            plugins/flutterflow/.claude-plugin/plugin.json \
+            plugins/flutterflow/hooks/hooks.json \
+            plugins/flutterflow/mcp.example.json; do
+            python3 -c "import json; json.load(open('$f'))" && echo "ok: $f"
+          done
+
+      - name: Check plugin metadata invariants
+        run: |
+          python3 - <<'PY'
+          import json, os
+          m = json.load(open("plugins/flutterflow/.claude-plugin/plugin.json"))
+          assert m.get("version"), "plugin.json is missing a version"
+          print("version:", m["version"])
+          # marketplace deliberately omits version so the two can't drift
+          mk = json.load(open(".claude-plugin/marketplace.json"))
+          for p in mk["plugins"]:
+              assert "version" not in p, "marketplace entry should not pin a version"
+          # hooks.json must reference a script that exists
+          h = json.load(open("plugins/flutterflow/hooks/hooks.json"))
+          cmd = h["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+          assert "session-start.sh" in cmd, "SessionStart hook command changed"
+          assert os.path.exists("plugins/flutterflow/hooks/session-start.sh"), "hook script missing"
+          print("metadata invariants ok")
+          PY
+
+      - name: Shell syntax
+        run: |
+          bash -n plugins/flutterflow/hooks/session-start.sh
+          bash -n plugins/flutterflow/hooks/session-start.test.sh
+
+      - name: ShellCheck (advisory)
+        run: |
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck -S warning plugins/flutterflow/hooks/session-start.sh || true
+          else
+            echo "shellcheck not available — skipping"
+          fi
+
+      - name: Security-property tests
+        run: bash plugins/flutterflow/hooks/session-start.test.sh
+
+  plugin-validate:
+    name: claude plugin validate (best-effort)
+    runs-on: ubuntu-latest
+    # Non-blocking: depends on the external Claude Code CLI being installable in
+    # CI. The `validate` job above is the authoritative gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Validate plugin (strict)
+        run: claude plugin validate ./plugins/flutterflow --strict

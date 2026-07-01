@@ -97,18 +97,22 @@ server must run inside an initialized workspace (`flutterflow ai init`) — poin
 ```text
 flutterflow-claude/
 ├── .claude-plugin/
-│   └── marketplace.json          # marketplace catalog (repo root)
+│   └── marketplace.json              # marketplace catalog (repo root)
+├── .github/
+│   └── workflows/
+│       └── ci.yml                    # manifest validation, lint, security tests
 ├── plugins/
 │   └── flutterflow/
 │       ├── .claude-plugin/
-│       │   └── plugin.json        # plugin manifest
+│       │   └── plugin.json           # plugin manifest
 │       ├── hooks/
-│       │   ├── hooks.json         # registers the SessionStart hook
-│       │   └── session-start.sh   # Dart-aware self-healing installer
+│       │   ├── hooks.json            # registers the SessionStart hook
+│       │   ├── session-start.sh      # Dart-aware self-healing installer
+│       │   └── session-start.test.sh # security-property tests for the hook
 │       ├── skills/
 │       │   └── build/
-│       │       └── SKILL.md        # build workflow (init → orient → validate → apply)
-│       └── mcp.example.json        # optional native-MCP path (off by default)
+│       │       └── SKILL.md          # build workflow (init → orient → validate → apply)
+│       └── mcp.example.json          # optional native-MCP path (off by default)
 └── README.md
 ```
 
@@ -120,6 +124,14 @@ Validate the plugin manifest, skill frontmatter, and hooks.json from your shell:
 
 ```bash
 claude plugin validate ./plugins/flutterflow --strict
+```
+
+Run the SessionStart hook's security-property tests (token file perms, safe
+`%q` quoting, cleanup when the token is cleared, refusal to follow a symlinked
+config dir). These also run in CI on every push and PR:
+
+```bash
+bash plugins/flutterflow/hooks/session-start.test.sh
 ```
 
 Then, inside Claude Code (these are slash commands, not shell commands), add this
