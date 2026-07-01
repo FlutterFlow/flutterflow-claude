@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege by default; the release job opts up to contents: write.
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Manifests, lint & security properties
@@ -72,3 +76,52 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Validate plugin (strict)
         run: claude plugin validate ./plugins/flutterflow --strict
+
+  release:
+    name: Tag & release on version bump
+    runs-on: ubuntu-latest
+    needs: [validate] # only release a commit whose manifests + security tests passed
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write # create the tag and the GitHub release
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read plugin version
+        id: ver
+        run: |
+          v=$(python3 -c "import json; print(json.load(open('plugins/flutterflow/.claude-plugin/plugin.json'))['version'])")
+          case "$v" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::Unexpected version '$v' in plugin.json"; exit 1 ;;
+          esac
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Plugin version: $v"
+
+      - name: Create release if the tag doesn't exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Passed via env (not inline ${{ }}) so the value can't be interpreted as shell.
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          tag="v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists — nothing to do."
+            exit 0
+          fi
+          # A bare tag without a release would make `gh release create` publish off
+          # the tag's existing (possibly stale) commit and silently ignore --target.
+          # Refuse rather than release the wrong commit.
+          if gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag $tag exists but has no release. Reconcile manually (delete the tag or create the release from it) — refusing to release off a possibly-stale commit."
+            exit 1
+          fi
+          echo "Creating release $tag at $GITHUB_SHA"
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "$tag" \
+            --generate-notes \
+            --latest
