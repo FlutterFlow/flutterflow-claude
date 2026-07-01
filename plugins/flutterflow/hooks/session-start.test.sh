@@ -77,6 +77,16 @@ grep -rq 'secretTOKEN' "$WORK/E_real" 2>/dev/null && fail "wrote through symlink
 grep -q 'symlink' "$WORK/e.log" && pass "logged refusal to stderr" || fail "no refusal logged"
 
 echo
+echo "== G: no token -> account link shown once, then throttled =="
+H="$WORK/G"; mkdir -p "$H"
+run "$H" '' "$WORK/g1.log"
+grep -q 'app.flutterflow.io/account' "$WORK/g1.log" \
+  && pass "no-key notice links to the account page" || fail "account link missing from notice"
+run "$H" '' "$WORK/g2.log"
+grep -q 'app.flutterflow.io/account' "$WORK/g2.log" \
+  && fail "notice repeated within throttle window" || pass "notice throttled on the next run"
+
+echo
 echo "== F: HOME unset -> clean exit 0, no crash, no writes =="
 if env -u HOME PATH="$WORK/bin:$PATH" CLAUDE_PLUGIN_OPTION_API_TOKEN=x bash "$HOOK" 2>/dev/null; then
   pass "exits 0 with HOME unset"

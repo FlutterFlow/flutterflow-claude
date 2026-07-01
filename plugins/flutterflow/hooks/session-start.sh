@@ -78,10 +78,22 @@ if [ -n "$TOKEN" ]; then
     chmod 600 "$ENV_FILE" 2>/dev/null
   fi
 else
-  # Token cleared in /plugin configure — remove the bridged plaintext copy so
-  # clearing the config also revokes the on-disk key. (The CLI's own cached
+  # Token cleared or never set in /plugin configure — remove the bridged plaintext
+  # copy so clearing the config also revokes the on-disk key. (The CLI's own cached
   # credentials in ~/.flutterflow/credentials.json still need `flutterflow ai logout`.)
   [ -f "$ENV_FILE" ] && rm -f "$ENV_FILE" 2>/dev/null
+
+  # No API token configured — tell the user where to create one. Throttled to once
+  # / 12h (its own stamp) so this never nags on every session start.
+  NOTICE_STAMP="$HOME/.cache/flutterflow-claude/last-no-key-notice"
+  if [ -z "$(find "$NOTICE_STAMP" -mmin -720 2>/dev/null)" ]; then
+    mkdir -p "$HOME/.cache/flutterflow-claude" 2>/dev/null
+    : > "$NOTICE_STAMP"
+    log "No FlutterFlow API token configured."
+    log "Get one at https://app.flutterflow.io/account, then add it with:"
+    log "  /plugin configure flutterflow@flutterflow   (enter it in the masked field)"
+    log "or export FF_API_KEY in your shell, then restart this session."
+  fi
 fi
 
 # -----------------------------------------------------------------------------

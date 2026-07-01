@@ -44,10 +44,12 @@ command -v flutterflow >/dev/null && echo "cli: ok" || echo "cli: MISSING"
   https://docs.flutter.dev/get-started/install. Don't install Flutter unasked.
 
 ### If `key: MISSING`
-`flutterflow ai` authenticates with **`FF_API_KEY`**. Treat the key as a secret:
-**never ask the user to paste it into the chat** (that routes it through the model
-context, where it's logged and retained), and never echo or commit it. Instead, tell
-the user to set it via one of these secure, out-of-band paths, then re-run the preflight:
+`flutterflow ai` authenticates with **`FF_API_KEY`**. If the user doesn't have a key
+yet, point them to **https://app.flutterflow.io/account** to create one. Treat the key
+as a secret: **never ask the user to paste it into the chat** (that routes it through
+the model context, where it's logged and retained), and never echo or commit it.
+Instead, tell the user to set it via one of these secure, out-of-band paths, then
+re-run the preflight:
 
 1. **Recommended — keychain:** run `/plugin configure flutterflow@flutterflow` in
    Claude Code and enter the key in the masked field. Claude Code stores it securely
@@ -74,7 +76,7 @@ workspace** (a directory containing `.flutterflow/config.yaml`). Check first:
 ```
 
 If there's none, scaffold one. Ask the user for a workspace name and their
-FlutterFlow project id (it's in the project URL: app.flutterflow.io/project/<id>):
+FlutterFlow project id (it's in the project URL: https://app.flutterflow.io/project/<id>):
 
 ```bash
 flutterflow ai init <name> --project <project-id>
@@ -124,6 +126,10 @@ Other surfaces exist too (`codegen`, `branch`, `merge`, `support`, `upgrade`,
 `refresh-workspace`, `precache`, `create-project`, `logout`) — use `--help`.
 
 ## Gotchas
+- **Write project URLs with the scheme.** When telling the user where a project
+  lives (after `init`, `create-project`, etc.), always write the full
+  `https://app.flutterflow.io/project/<id>` — a schemeless `app.flutterflow.io/…`
+  renders as plain text in chat, not a clickable link.
 - **Auth var is `FF_API_KEY`**, not `FLUTTERFLOW_API_TOKEN`. The same account-page
   token works for both; the plugin sets both, but `flutterflow ai` reads only `FF_API_KEY`.
 - **Workspace required.** Toolbox commands fail (exit 64 / "No .flutterflow/config.yaml")
