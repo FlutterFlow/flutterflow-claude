@@ -23,7 +23,10 @@ for d in "$HOME/flutter/bin" "$HOME/development/flutter/bin" "$HOME/fvm/default/
   [ -d "$d" ] && PATH="$d:$PATH"
 done
 export PATH
-[ -f "$HOME/.config/flutterflow/claude-env.sh" ] && . "$HOME/.config/flutterflow/claude-env.sh"
+# Source the key file only if it's a regular, user-owned, non-symlink file — the
+# preamble dot-sources it as shell, so refuse a planted symlink or foreign-owned file.
+FF_ENV="$HOME/.config/flutterflow/claude-env.sh"
+[ -f "$FF_ENV" ] && [ ! -L "$FF_ENV" ] && [ -O "$FF_ENV" ] && . "$FF_ENV"
 ```
 
 Confirm readiness:
@@ -47,15 +50,16 @@ context, where it's logged and retained), and never echo or commit it. Instead, 
 the user to set it via one of these secure, out-of-band paths, then re-run the preflight:
 
 1. **Recommended — keychain:** run `/plugin configure flutterflow@flutterflow` in
-   Claude Code and enter the key in the masked field. Claude Code stores it in the OS
-   keychain and the plugin's SessionStart hook bridges it to `FF_API_KEY` next session.
+   Claude Code and enter the key in the masked field. Claude Code stores it securely
+   (in the OS keychain where available) and the plugin's SessionStart hook bridges it to `FF_API_KEY` next session.
 2. **Their own terminal:** the user adds the export themselves, so the key is typed
    into their shell — never into this conversation:
    ```bash
    mkdir -p ~/.config/flutterflow && chmod 700 ~/.config/flutterflow
-   # the user runs this in THEIR terminal, pasting their own key:
-   #   printf 'export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q\n' "$KEY" "$KEY" \
-   #     > ~/.config/flutterflow/claude-env.sh && chmod 600 ~/.config/flutterflow/claude-env.sh
+   # the user runs this in THEIR terminal, pasting their own key. Wrapped in
+   # `bash -c` because %q is a bash builtin — a plain `sh`/dash prompt drops it.
+   #   bash -c 'umask 077; printf "export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q\n" "$1" "$1" \
+   #     > ~/.config/flutterflow/claude-env.sh' _ "$KEY"
    ```
 
 Once the key is set (keychain or env), `flutterflow ai init` runs non-interactively.
@@ -78,8 +82,10 @@ cd <name>
 ```
 
 This runs non-interactively: `--project` selects the project up front and the key
-comes from `FF_API_KEY` in the env (add `--api-key <key>` to override, `--resume` to
-re-enter an existing scaffold). `init` writes `.flutterflow/.env` with `FF_API_KEY`
+comes from `FF_API_KEY` in the env (`--resume` re-enters an existing scaffold). Don't
+pass the key on the command line (e.g. `--api-key`) — that puts the secret into a Bash
+invocation and the model context; rely on `FF_API_KEY` from the sourced env file.
+`init` writes `.flutterflow/.env` with `FF_API_KEY`
 and `FF_DSL_PROJECT_ID`, so later commands in this workspace are authenticated and
 project-scoped. See `flutterflow ai init --help` for more (`--env`, `--sdk-path`,
 `--pre-release`, `--no-save`).

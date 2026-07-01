@@ -13,6 +13,17 @@ set -o pipefail
 # context, and these banners/instructions are meant for the user, not the model.
 log() { printf '[flutterflow] %s\n' "$1" >&2; }
 
+# Without HOME we can't locate the config/cache dirs and would operate on
+# filesystem-root paths (/.config, /.pub-cache/bin). Bail cleanly instead.
+if [ -z "${HOME:-}" ]; then
+  log "HOME is not set — skipping FlutterFlow setup this session."
+  exit 0
+fi
+
+# Pin the CLI version so this auto-run hook never floats to an unreviewed
+# 'latest' from pub.dev. Bump deliberately alongside the plugin version.
+FF_CLI_VERSION="0.0.37"
+
 # -----------------------------------------------------------------------------
 # 1. Make common Dart / Flutter / pub-cache bin dirs visible.
 #    A GUI-launched Claude Code may not inherit your interactive shell PATH,
@@ -40,21 +51,37 @@ TOKEN="${CLAUDE_PLUGIN_OPTION_API_TOKEN:-}"
 ENV_DIR="$HOME/.config/flutterflow"
 ENV_FILE="$ENV_DIR/claude-env.sh"
 if [ -n "$TOKEN" ]; then
-  # Create the dir/file with tight perms from the outset (umask 077) so the
-  # plaintext token is never momentarily group/world-readable.
-  ( umask 077; mkdir -p "$ENV_DIR" 2>/dev/null )
-  chmod 700 "$ENV_DIR" 2>/dev/null
-  # `flutterflow ai` authenticates with FF_API_KEY; FLUTTERFLOW_API_TOKEN is the
-  # legacy export-code/deploy-firebase var. Write both, set to the same token.
-  # %q shell-quotes the value so a token containing a quote, $, backtick, or
-  # space is safe when the build skill sources this file (matches SKILL.md).
-  DESIRED=$(printf 'export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q' "$TOKEN" "$TOKEN")
-  if [ ! -f "$ENV_FILE" ] || [ "$(cat "$ENV_FILE" 2>/dev/null)" != "$DESIRED" ]; then
-    ( umask 077; printf '%s\n' "$DESIRED" > "$ENV_FILE" )
+  # Refuse to operate through a symlinked config dir: a pre-planted symlink could
+  # redirect the plaintext token to a git-tracked/synced/attacker-readable path.
+  if [ -L "$ENV_DIR" ]; then
+    log "Refusing to write the token: $ENV_DIR is a symlink."
+  else
+    # Create the dir/file with tight perms from the outset (umask 077) so the
+    # plaintext token is never momentarily group/world-readable.
+    ( umask 077; mkdir -p "$ENV_DIR" 2>/dev/null )
+    chmod 700 "$ENV_DIR" 2>/dev/null
+    # If the target is a symlink or any non-regular file, remove it first so the
+    # write below can't follow a link out to another location.
+    if [ -L "$ENV_FILE" ] || { [ -e "$ENV_FILE" ] && [ ! -f "$ENV_FILE" ]; }; then
+      rm -f "$ENV_FILE" 2>/dev/null
+    fi
+    # `flutterflow ai` authenticates with FF_API_KEY; FLUTTERFLOW_API_TOKEN is the
+    # legacy export-code/deploy-firebase var. Write both, set to the same token.
+    # %q shell-quotes the value so a token containing a quote, $, backtick, or
+    # space is safe when the build skill sources this file (matches SKILL.md).
+    DESIRED=$(printf 'export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q' "$TOKEN" "$TOKEN")
+    if [ ! -f "$ENV_FILE" ] || [ "$(cat "$ENV_FILE" 2>/dev/null)" != "$DESIRED" ]; then
+      ( umask 077; printf '%s\n' "$DESIRED" > "$ENV_FILE" )
+    fi
+    # Enforce perms on every run (not just on rewrite) so a pre-existing file with
+    # loose permissions is always re-secured.
+    chmod 600 "$ENV_FILE" 2>/dev/null
   fi
-  # Enforce perms on every run (not just on rewrite) so a pre-existing file with
-  # loose permissions is always re-secured.
-  chmod 600 "$ENV_FILE" 2>/dev/null
+else
+  # Token cleared in /plugin configure — remove the bridged plaintext copy so
+  # clearing the config also revokes the on-disk key. (The CLI's own cached
+  # credentials in ~/.flutterflow/credentials.json still need `flutterflow ai logout`.)
+  [ -f "$ENV_FILE" ] && rm -f "$ENV_FILE" 2>/dev/null
 fi
 
 # -----------------------------------------------------------------------------
@@ -80,10 +107,9 @@ if command -v dart >/dev/null 2>&1; then
   if [ -n "$(find "$STAMP" -mmin -360 2>/dev/null)" ]; then
     exit 0
   fi
-  : > "$STAMP"
 
-  log "Installing the FlutterFlow CLI (dart pub global activate flutterflow_cli)…"
-  if dart pub global activate flutterflow_cli >"$STAMP_DIR/activate.log" 2>&1; then
+  log "Installing the FlutterFlow CLI (flutterflow_cli $FF_CLI_VERSION)…"
+  if dart pub global activate flutterflow_cli "$FF_CLI_VERSION" >"$STAMP_DIR/activate.log" 2>&1; then
     log "✓ FlutterFlow CLI installed — you're ready for agentic building."
     if ! command -v flutterflow >/dev/null 2>&1; then
       log "One more step: add Dart's pub-cache bin to your PATH, then restart:"
@@ -93,6 +119,10 @@ if command -v dart >/dev/null 2>&1; then
     log "✗ CLI install failed. See the log: $STAMP_DIR/activate.log"
     log "Open the FlutterFlow build skill for guided troubleshooting."
   fi
+  # Stamp only after a completed attempt (success or clean failure). If the
+  # activate is interrupted (session quit, sleep, network drop) we don't stamp,
+  # so the next session retries instead of no-opping for 6h.
+  : > "$STAMP"
 else
   # Dart missing — point the user at an install, throttled to once / 12h.
   STAMP="$STAMP_DIR/last-dart-notice"

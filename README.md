@@ -23,6 +23,10 @@ The user must already have:
 3. **Dart**, bundled with **Flutter** — required for the FlutterFlow CLI. If it's
    missing, the plugin detects it and links the install; nothing else breaks.
 
+The SessionStart hook is a POSIX shell script run with `bash`, so **macOS and Linux
+are supported out of the box**. On Windows it needs a `bash` on PATH (Git Bash or
+WSL); without one the hook no-ops and you'd drive `flutterflow ai` manually.
+
 ## Install (what your users run)
 
 Two commands in Claude Code:
@@ -62,8 +66,9 @@ hook) but **not** to the Bash tool that runs `flutterflow`. So the hook bridges 
 it reads the token from `CLAUDE_PLUGIN_OPTION_API_TOKEN` and writes
 `~/.config/flutterflow/claude-env.sh` (dir `chmod 700`, file `chmod 600`) exporting
 both `FF_API_KEY` and `FLUTTERFLOW_API_TOKEN`, which the build skill sources before
-each command. If the token wasn't set at enable time, the skill collects it
-interactively and writes the same file.
+each command. If the token wasn't set at enable time, the skill guides you to set it
+out-of-band (via `/plugin configure` or your own terminal) — never accepting it in
+chat — and the hook writes the same file on the next session start.
 
 **Rotating or removing the token.** After updating it via `/plugin configure
 flutterflow@flutterflow`, **restart the session** — the hook only rewrites
