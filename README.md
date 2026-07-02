@@ -75,6 +75,16 @@ each command. If the token wasn't set at enable time, the skill guides you to se
 out-of-band (via `/plugin configure` or your own terminal) — never accepting it in
 chat — and the hook writes the same file on the next session start.
 
+> **Known upstream issues:** in current Claude Code versions the `/plugin configure`
+> dialog may not accept input
+> ([#51538](https://github.com/anthropics/claude-code/issues/51538)) and `sensitive`
+> values may not persist across restarts
+> ([#62442](https://github.com/anthropics/claude-code/issues/62442)). If the dialog
+> misbehaves, write `~/.config/flutterflow/claude-env.sh` from your own terminal (the
+> build skill shows the exact command) or let `flutterflow ai init` prompt for the
+> key. The hook only auto-removes `claude-env.sh` files it wrote itself (stamped with
+> a `# managed-by:` first line) — a hand-written file is never deleted.
+
 **Rotating or removing the token.** After updating it via `/plugin configure
 flutterflow@flutterflow`, **restart the session** — the hook only rewrites
 `claude-env.sh` on a new session start, so an already-running session keeps the old
@@ -83,7 +93,7 @@ cached credentials:
 
 ```bash
 rm -f ~/.config/flutterflow/claude-env.sh
-flutterflow ai logout   # clears ~/.flutterflow/credentials.json
+flutterflow ai logout --all   # clears ~/.flutterflow/credentials.json (bare `logout` only lists)
 ```
 
 ## Optional: native MCP instead of the CLI skill

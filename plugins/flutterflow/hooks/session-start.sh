@@ -50,6 +50,11 @@ done
 TOKEN="${CLAUDE_PLUGIN_OPTION_API_TOKEN:-}"
 ENV_DIR="$HOME/.config/flutterflow"
 ENV_FILE="$ENV_DIR/claude-env.sh"
+# First line of every file this hook writes. Distinguishes hook-managed files
+# (safe to auto-delete when the token is cleared) from hand-written ones, which
+# SKILL.md tells users to create when /plugin configure misbehaves — those must
+# never be deleted out from under them.
+MARKER='# managed-by: flutterflow-claude plugin'
 if [ -n "$TOKEN" ]; then
   # Refuse to operate through a symlinked config dir: a pre-planted symlink could
   # redirect the plaintext token to a git-tracked/synced/attacker-readable path.
@@ -69,7 +74,7 @@ if [ -n "$TOKEN" ]; then
     # legacy export-code/deploy-firebase var. Write both, set to the same token.
     # %q shell-quotes the value so a token containing a quote, $, backtick, or
     # space is safe when the build skill sources this file (matches SKILL.md).
-    DESIRED=$(printf 'export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q' "$TOKEN" "$TOKEN")
+    DESIRED=$(printf '%s\nexport FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q' "$MARKER" "$TOKEN" "$TOKEN")
     if [ ! -f "$ENV_FILE" ] || [ "$(cat "$ENV_FILE" 2>/dev/null)" != "$DESIRED" ]; then
       ( umask 077; printf '%s\n' "$DESIRED" > "$ENV_FILE" )
     fi
@@ -79,20 +84,28 @@ if [ -n "$TOKEN" ]; then
   fi
 else
   # Token cleared or never set in /plugin configure — remove the bridged plaintext
-  # copy so clearing the config also revokes the on-disk key. (The CLI's own cached
-  # credentials in ~/.flutterflow/credentials.json still need `flutterflow ai logout`.)
-  [ -f "$ENV_FILE" ] && rm -f "$ENV_FILE" 2>/dev/null
+  # copy so clearing the config also revokes the on-disk key, but ONLY if this hook
+  # wrote it (marker check). Hand-written files stay; deleting them would silently
+  # log the user out every session. Legacy hook-written files (pre-marker) also
+  # stay — the clear-api-key flow covers those. (The CLI's cached credentials in
+  # ~/.flutterflow/credentials.json still need `flutterflow ai logout --all`.)
+  if [ -f "$ENV_FILE" ] && grep -q "^$MARKER" "$ENV_FILE" 2>/dev/null; then
+    rm -f "$ENV_FILE" 2>/dev/null
+  fi
 
-  # No API token configured — tell the user where to create one. Throttled to once
-  # / 12h (its own stamp) so this never nags on every session start.
-  NOTICE_STAMP="$HOME/.cache/flutterflow-claude/last-no-key-notice"
-  if [ -z "$(find "$NOTICE_STAMP" -mmin -720 2>/dev/null)" ]; then
-    mkdir -p "$HOME/.cache/flutterflow-claude" 2>/dev/null
-    : > "$NOTICE_STAMP"
-    log "No FlutterFlow API token configured."
-    log "Get one at https://app.flutterflow.io/account, then add it with:"
-    log "  /plugin configure flutterflow@flutterflow   (enter it in the masked field)"
-    log "or export FF_API_KEY in your shell, then restart this session."
+  # No API token configured anywhere — tell the user where to create one. Skipped
+  # when a hand-written env file provides the key; throttled to once / 12h (its
+  # own stamp) so this never nags on every session start.
+  if [ ! -f "$ENV_FILE" ]; then
+    NOTICE_STAMP="$HOME/.cache/flutterflow-claude/last-no-key-notice"
+    if [ -z "$(find "$NOTICE_STAMP" -mmin -720 2>/dev/null)" ]; then
+      mkdir -p "$HOME/.cache/flutterflow-claude" 2>/dev/null
+      : > "$NOTICE_STAMP"
+      log "No FlutterFlow API token configured."
+      log "Get one at https://app.flutterflow.io/account, then add it with:"
+      log "  /plugin configure flutterflow@flutterflow   (enter it in the masked field)"
+      log "or export FF_API_KEY in your shell, then restart this session."
+    fi
   fi
 fi
 

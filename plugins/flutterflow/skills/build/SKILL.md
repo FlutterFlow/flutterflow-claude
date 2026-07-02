@@ -51,20 +51,31 @@ the model context, where it's logged and retained), and never echo or commit it.
 Instead, tell the user to set it via one of these secure, out-of-band paths, then
 re-run the preflight:
 
-1. **Recommended — keychain:** run `/plugin configure flutterflow@flutterflow` in
-   Claude Code and enter the key in the masked field. Claude Code stores it securely
-   (in the OS keychain where available) and the plugin's SessionStart hook bridges it to `FF_API_KEY` next session.
-2. **Their own terminal:** the user adds the export themselves, so the key is typed
-   into their shell — never into this conversation:
+1. **Recommended — their own terminal:** the user writes the env file themselves, so
+   the key is typed into their shell — never into this conversation. `read -rs` also
+   keeps it out of their shell history:
    ```bash
+   # The user runs this in THEIR terminal and pastes the key at the hidden prompt.
+   # bash -c because read -s and %q are bash features a plain `sh`/dash prompt drops.
    mkdir -p ~/.config/flutterflow && chmod 700 ~/.config/flutterflow
-   # the user runs this in THEIR terminal, pasting their own key. Wrapped in
-   # `bash -c` because %q is a bash builtin — a plain `sh`/dash prompt drops it.
-   #   bash -c 'umask 077; printf "export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q\n" "$1" "$1" \
-   #     > ~/.config/flutterflow/claude-env.sh' _ "$KEY"
+   bash -c 'umask 077; read -rsp "FlutterFlow API key: " K; echo; \
+     printf "export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q\n" "$K" "$K" \
+     > ~/.config/flutterflow/claude-env.sh'
    ```
+   The SessionStart hook never deletes a hand-written file — it only auto-removes
+   files it wrote itself (first line `# managed-by: flutterflow-claude plugin`).
+2. **Let `init` collect it:** in the user's own terminal, `flutterflow ai init
+   <name> --project <project-id>` with no `FF_API_KEY` in the env prompts for the
+   key and caches it (`~/.flutterflow/credentials.json` plus the workspace `.env`),
+   so in-workspace commands authenticate without any env file.
+3. **Keychain:** run `/plugin configure flutterflow@flutterflow` and enter the key
+   in the masked field; the SessionStart hook bridges it to `FF_API_KEY` next
+   session. **Caveat:** current Claude Code versions have open bugs here — the
+   dialog may not accept input (anthropics/claude-code#51538) and `sensitive`
+   values may not persist across restarts (#62442). If it misbehaves, use path 1 or 2.
 
-Once the key is set (keychain or env), `flutterflow ai init` runs non-interactively.
+Once the key is set (env file, cached credentials, or keychain), `flutterflow ai
+init` runs non-interactively.
 
 ## 1. Workspace — required before the toolbox
 

@@ -37,6 +37,8 @@ EF="$H/.config/flutterflow/claude-env.sh"
 [ "$(mode "$H/.config/flutterflow")" = "700" ] && pass "config dir mode 700" || fail "config dir mode is $(mode "$H/.config/flutterflow"), want 700"
 grep -q '^export FF_API_KEY=' "$EF" && grep -q '^export FLUTTERFLOW_API_TOKEN=' "$EF" \
   && pass "both FF_API_KEY and FLUTTERFLOW_API_TOKEN exported" || fail "missing an export"
+grep -q '^# managed-by: flutterflow-claude plugin' "$EF" \
+  && pass "hook-written file carries the managed-by marker" || fail "managed-by marker missing"
 
 echo
 echo "== B: token with shell metacharacters round-trips exactly (no injection) =="
@@ -48,12 +50,21 @@ GOT=$(env -i bash -c ". '$H/.config/flutterflow/claude-env.sh'; printf '%s' \"\$
   || { fail "round-trip mismatch"; printf '  want=[%s]\n  got =[%s]\n' "$TRICKY" "$GOT"; }
 
 echo
-echo "== C: token cleared -> pre-existing key file is removed =="
-H="$WORK/C"; mkdir -p "$H/.config/flutterflow"
-printf 'export FF_API_KEY=stale\n' > "$H/.config/flutterflow/claude-env.sh"
-run "$H" '' "$WORK/c.log"
-[ ! -e "$H/.config/flutterflow/claude-env.sh" ] && pass "stale key file removed on clear" \
-  || fail "key file still present after token cleared"
+echo "== C: token cleared -> hook-managed file removed, hand-written file kept =="
+H="$WORK/C"; mkdir -p "$H"
+run "$H" 'stale-token' "$WORK/c0.log"   # hook writes a marker-stamped file
+run "$H" '' "$WORK/c1.log"
+[ ! -e "$H/.config/flutterflow/claude-env.sh" ] && pass "hook-managed key file removed on clear" \
+  || fail "hook-managed key file still present after token cleared"
+
+H="$WORK/C2"; mkdir -p "$H/.config/flutterflow"
+printf 'export FF_API_KEY=usersown\n' > "$H/.config/flutterflow/claude-env.sh"
+run "$H" '' "$WORK/c2.log"
+[ -f "$H/.config/flutterflow/claude-env.sh" ] && pass "hand-written key file (no marker) preserved" \
+  || fail "hand-written key file was deleted"
+grep -q 'app.flutterflow.io/account' "$WORK/c2.log" \
+  && fail "no-key notice shown despite a hand-written key file" \
+  || pass "no-key notice suppressed when a hand-written key file provides the key"
 
 echo
 echo "== D: env file is a symlink pointing outside -> target NOT written =="
