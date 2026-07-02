@@ -29,27 +29,45 @@ WSL); without one the hook no-ops and you'd drive `flutterflow ai` manually.
 
 ## Install
 
-Install directly from this marketplace repo — two commands in Claude Code:
+**Primary path — install straight from GitHub, no clone needed.** Two slash
+commands inside Claude Code:
 
 ```text
 /plugin marketplace add FlutterFlow/flutterflow-claude
 /plugin install flutterflow@flutterflow
 ```
 
-> `FlutterFlow/flutterflow-claude` is the public GitHub repo Claude Code clones.
-> `flutterflow` after the `@` is the marketplace **name** (from
+Or the equivalent from any terminal (same result — the CLI and desktop app share
+plugin state):
+
+```bash
+claude plugin marketplace add FlutterFlow/flutterflow-claude
+claude plugin install flutterflow@flutterflow
+```
+
+> `FlutterFlow/flutterflow-claude` is the public GitHub repo Claude Code clones (an
+> HTTPS URL works too). `flutterflow` after the `@` is the marketplace **name** (from
 > `.claude-plugin/marketplace.json`), which matches the GitHub **org** name — not
-> the repo (`flutterflow-claude`).
+> the repo (`flutterflow-claude`). Installs track the repo's default branch;
+> `/plugin marketplace update flutterflow` pulls the latest.
+
+Working from a local checkout instead (contributing or testing changes)? See
+[Local development / testing](#local-development--testing) — GitHub install is the
+right path for everyone else.
 
 Once accepted into the [Claude plugin directory](https://claude.com/plugins-for/cowork),
 the plugin is also discoverable by every Claude Code user through the built-in
 `claude-plugins-official` marketplace (browse it with `/plugin`) — no
 `marketplace add` step required.
 
-On enable, Claude Code prompts for the **FlutterFlow API token**
-(from <https://app.flutterflow.io/account>). On the next session start the CLI
-installs itself; after that the hook is a fast pass that just refreshes your PATH
-and the token file (no install work) — so a rotated token is picked up next session.
+After install, connect your **FlutterFlow API key**: copy it from
+<https://app.flutterflow.io/account>, then tell Claude *"I copied my FlutterFlow API
+key"* — the build skill stores it straight from your clipboard so it never enters
+the chat (details in the note under
+[How the token reaches the CLI](#how-the-token-reaches-the-cli)). On the next
+session start the CLI installs itself; after that the hook is a fast pass that just
+refreshes your PATH and the key file (no install work) — so a rotated key is picked
+up next session.
 
 ## Using it
 
@@ -154,15 +172,34 @@ config dir). These also run in CI on every push and PR:
 bash plugins/flutterflow/hooks/session-start.test.sh
 ```
 
-Then, inside Claude Code (these are slash commands, not shell commands), add this
-repo as a marketplace from a local path and install:
+Then register your clone as a local marketplace and install from it — this is the
+**development/testing path**; end users should install from GitHub (see
+[Install](#install)). From a terminal, **run it from the repo root** (the directory
+containing `.claude-plugin/marketplace.json`):
 
-```text
-/plugin marketplace add /absolute/path/to/flutterflow-claude
-/plugin install flutterflow@flutterflow
+```bash
+cd /path/to/flutterflow-claude
+claude plugin marketplace add ./
+claude plugin install flutterflow@flutterflow
 ```
 
-After editing the marketplace, users refresh with `/plugin marketplace update`.
+Inside Claude Code the same works as slash commands — there's no `cd`, so use the
+absolute path: `/plugin marketplace add /absolute/path/to/flutterflow-claude`, then
+`/plugin install flutterflow@flutterflow`.
+
+Notes:
+
+- The local marketplace registers under the same **name** (`flutterflow`) as the
+  GitHub install — they can't coexist. Remove one before adding the other:
+  `claude plugin marketplace remove flutterflow`.
+- After editing plugin files, refresh the installed copy with
+  `claude plugin marketplace update flutterflow` (or uninstall/reinstall).
+
+> **Troubleshooting:** if `marketplace add .` fails with *"Invalid marketplace
+> source format. Try: owner/repo, https://..., or ./path"*, bare `.` isn't an
+> accepted source — write `./`. If `add ./` fails with *"Marketplace file not found
+> at …/.claude-plugin/marketplace.json"*, you're not in the repo root — `cd` into
+> the clone and re-run.
 
 ## Publishing & updates
 

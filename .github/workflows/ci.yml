@@ -33,6 +33,10 @@ jobs:
           m = json.load(open("plugins/flutterflow/.claude-plugin/plugin.json"))
           assert m.get("version"), "plugin.json is missing a version"
           print("version:", m["version"])
+          # every released version needs a human-written changelog entry
+          cl = open("CHANGELOG.md").read()
+          assert f"## [{m['version']}]" in cl, \
+              f"CHANGELOG.md has no '## [{m['version']}]' entry — add one before bumping"
           # marketplace deliberately omits version so the two can't drift
           mk = json.load(open(".claude-plugin/marketplace.json"))
           for p in mk["plugins"]:
@@ -125,8 +129,22 @@ jobs:
             exit 1
           fi
           echo "Creating release $tag at $GITHUB_SHA"
-          gh release create "$tag" \
-            --target "$GITHUB_SHA" \
-            --title "$tag" \
-            --generate-notes \
-            --latest
+          # Release notes come from this version's CHANGELOG.md entry; fall back to
+          # auto-generated commit notes if the section is missing or empty.
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" {f=1; next}
+            /^## \[/ {f=0}
+            f' CHANGELOG.md > /tmp/release-notes.md
+          if [ -s /tmp/release-notes.md ]; then
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "$tag" \
+              --notes-file /tmp/release-notes.md \
+              --latest
+          else
+            gh release create "$tag" \
+              --target "$GITHUB_SHA" \
+              --title "$tag" \
+              --generate-notes \
+              --latest
+          fi
