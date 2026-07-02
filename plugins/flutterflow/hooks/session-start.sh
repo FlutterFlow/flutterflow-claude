@@ -101,10 +101,11 @@ else
     if [ -z "$(find "$NOTICE_STAMP" -mmin -720 2>/dev/null)" ]; then
       mkdir -p "$HOME/.cache/flutterflow-claude" 2>/dev/null
       : > "$NOTICE_STAMP"
-      log "No FlutterFlow API token configured."
-      log "Get one at https://app.flutterflow.io/account, then add it with:"
-      log "  /plugin configure flutterflow@flutterflow   (enter it in the masked field)"
-      log "or export FF_API_KEY in your shell, then restart this session."
+      log "No FlutterFlow API key configured."
+      log "  1) Copy an API key from https://app.flutterflow.io/account"
+      log "  2) Come back and tell Claude: \"I copied my FlutterFlow API key\""
+      log "Claude stores it straight from your clipboard — the key never appears in the chat."
+      log "Never paste the key itself into the conversation. (Over SSH/headless, ask Claude for the terminal one-liner instead.)"
     fi
   fi
 fi

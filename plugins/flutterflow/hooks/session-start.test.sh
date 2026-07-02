@@ -66,6 +66,13 @@ grep -q 'app.flutterflow.io/account' "$WORK/c2.log" \
   && fail "no-key notice shown despite a hand-written key file" \
   || pass "no-key notice suppressed when a hand-written key file provides the key"
 
+H="$WORK/C3"; mkdir -p "$H/.config/flutterflow"
+printf '# flutterflow-claude: user-provided key (clipboard hand-off)\nexport FF_API_KEY=fromclip\n' \
+  > "$H/.config/flutterflow/claude-env.sh"
+run "$H" '' "$WORK/c3.log"
+[ -f "$H/.config/flutterflow/claude-env.sh" ] && pass "clipboard-script file (its own header) preserved" \
+  || fail "clipboard-script file was deleted — header collides with the managed marker"
+
 echo
 echo "== D: env file is a symlink pointing outside -> target NOT written =="
 H="$WORK/D"; mkdir -p "$H/.config/flutterflow"

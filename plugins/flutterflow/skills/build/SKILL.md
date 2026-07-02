@@ -1,6 +1,6 @@
 ---
 name: build
-description: "Agentic building with FlutterFlow via the `flutterflow ai` CLI. Use whenever the user wants to set up a FlutterFlow AI workspace or inspect, plan, change, or validate a FlutterFlow project — building pages/screens/components, editing app state or data types, wiring actions, or applying declarative Dart (DSL) changes. Also handles first-run setup — installing the CLI, configuring FF_API_KEY, and scaffolding a workspace with `flutterflow ai init`."
+description: "Agentic building with FlutterFlow via the `flutterflow ai` CLI. Use whenever the user wants to set up a FlutterFlow AI workspace or inspect, plan, change, or validate a FlutterFlow project — building pages/screens/components, editing app state or data types, wiring actions, or applying declarative Dart (DSL) changes. Also handles first-run setup — installing the CLI, configuring FF_API_KEY, and scaffolding a workspace with `flutterflow ai init`. Trigger on key hand-off phrases like \"I copied my FlutterFlow key\", \"copied my API key\", or \"copied\" right after key setup instructions."
 ---
 
 # FlutterFlow agentic building
@@ -45,37 +45,67 @@ command -v flutterflow >/dev/null && echo "cli: ok" || echo "cli: MISSING"
 
 ### If `key: MISSING`
 `flutterflow ai` authenticates with **`FF_API_KEY`**. If the user doesn't have a key
-yet, point them to **https://app.flutterflow.io/account** to create one. Treat the key
-as a secret: **never ask the user to paste it into the chat** (that routes it through
-the model context, where it's logged and retained), and never echo or commit it.
-Instead, tell the user to set it via one of these secure, out-of-band paths, then
-re-run the preflight:
+yet, point them to **https://app.flutterflow.io/account** to create one.
 
-1. **Recommended — their own terminal:** the user writes the env file themselves, so
-   the key is typed into their shell — never into this conversation. `read -rs` also
-   keeps it out of their shell history:
+**Hard rules — the key must never enter the model context:**
+- **Never ask the user to paste the key into the chat** or an AskUserQuestion field
+  (chat is logged and retained). Tell them up front: *"Do NOT paste the key into
+  this chat."* If a key-shaped string ever appears in chat anyway, treat it as
+  compromised: do not use or store it, tell the user to rotate it immediately at
+  https://app.flutterflow.io/account.
+- **Never run `pbpaste`, `wl-paste`, `xclip`, `xsel`, or `Get-Clipboard` bare or in
+  any pipeline you compose** — their stdout enters the model context. The ONLY
+  sanctioned clipboard access is the bundled script below.
+- **Never `cat`/Read/grep-with-output** `~/.config/flutterflow/claude-env.sh`,
+  `~/.flutterflow/credentials.json`, or any `.flutterflow/.env`. Debug with
+  presence checks only: `[ -n "${FF_API_KEY:-}" ]`, `ls -l`, `wc -c`.
+
+Set the key via one of these paths, then re-run the preflight:
+
+1. **Recommended (local desktop) — clipboard hand-off.** Tell the user:
+   *"1) Open https://app.flutterflow.io/account and copy your API key. 2) Come back
+   and just say **copied** — do NOT paste the key into this chat. I'll read your
+   clipboard once, without displaying it, then clear it."*
+   The moment they say "copied", IMMEDIATELY (no other tool calls in between) run
+   exactly this as a standalone command:
    ```bash
-   # The user runs this in THEIR terminal and pastes the key at the hidden prompt.
-   # bash -c because read -s and %q are bash features a plain `sh`/dash prompt drops.
-   mkdir -p ~/.config/flutterflow && chmod 700 ~/.config/flutterflow
-   bash -c 'umask 077; read -rsp "FlutterFlow API key: " K; echo; \
-     printf "export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q\n" "$K" "$K" \
-     > ~/.config/flutterflow/claude-env.sh'
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/store-key-from-clipboard.sh"
    ```
-   The SessionStart hook never deletes a hand-written file — it only auto-removes
-   files it wrote itself (first line `# managed-by: flutterflow-claude plugin`).
-2. **Let `init` collect it:** in the user's own terminal, `flutterflow ai init
+   (If `CLAUDE_PLUGIN_ROOT` is unset in your Bash environment, resolve the script
+   relative to this skill's base directory: `../../scripts/store-key-from-clipboard.sh`.)
+   The script validates the clipboard, writes the env file (0600), clears the
+   clipboard, and prints only a status line — the key never reaches this chat.
+   - On `key: INVALID`, reply exactly: *"That didn't look like an API key — something
+     may have overwritten your clipboard. Copy the key again (make it the last thing
+     you copy) and say copied."*
+   - On `clipboard: UNAVAILABLE` (SSH, headless, containers), fall back to path 2.
+2. **SSH / headless / no clipboard — their own terminal:** the user runs this in
+   THEIR terminal and types the key at the hidden prompt (never into this chat;
+   `read -rs` also keeps it out of shell history):
+   ```bash
+   [ -L ~/.config/flutterflow ] && echo "refusing: symlink" || { \
+     mkdir -p ~/.config/flutterflow && chmod 700 ~/.config/flutterflow && \
+     bash -c 'umask 077; read -rsp "FlutterFlow API key: " K; echo; \
+       printf "export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q\n" "$K" "$K" \
+       > ~/.config/flutterflow/claude-env.sh'; }
+   ```
+3. **Let `init` collect it:** in the user's own terminal, `flutterflow ai init
    <name> --project <project-id>` with no `FF_API_KEY` in the env prompts for the
    key and caches it (`~/.flutterflow/credentials.json` plus the workspace `.env`),
    so in-workspace commands authenticate without any env file.
-3. **Keychain:** run `/plugin configure flutterflow@flutterflow` and enter the key
-   in the masked field; the SessionStart hook bridges it to `FF_API_KEY` next
-   session. **Caveat:** current Claude Code versions have open bugs here — the
-   dialog may not accept input (anthropics/claude-code#51538) and `sensitive`
-   values may not persist across restarts (#62442). If it misbehaves, use path 1 or 2.
 
-Once the key is set (env file, cached credentials, or keychain), `flutterflow ai
-init` runs non-interactively.
+The SessionStart hook never deletes user-provided key files — it only auto-removes
+files it wrote itself (first line `# managed-by: flutterflow-claude plugin`).
+Do NOT suggest `/plugin configure` for the key: its input dialog is broken upstream
+(anthropics/claude-code#73530) and `sensitive` values don't persist (#62442). The
+hook still bridges a configured token automatically if one exists.
+
+If the first authenticated command later fails with 401/permission-denied, the key
+is wrong or revoked — reply: *"FlutterFlow rejected that key. Copy a fresh one from
+https://app.flutterflow.io/account and say copied — don't paste it here."*
+
+Once the key is set (env file or cached credentials), `flutterflow ai init` runs
+non-interactively.
 
 ## 1. Workspace — required before the toolbox
 

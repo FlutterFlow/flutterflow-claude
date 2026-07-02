@@ -76,14 +76,19 @@ out-of-band (via `/plugin configure` or your own terminal) — never accepting i
 chat — and the hook writes the same file on the next session start.
 
 > **Known upstream issues:** in current Claude Code versions the `/plugin configure`
-> dialog may not accept input
-> ([#51538](https://github.com/anthropics/claude-code/issues/51538)) and `sensitive`
+> dialog does not accept input
+> ([#73530](https://github.com/anthropics/claude-code/issues/73530)) and `sensitive`
 > values may not persist across restarts
-> ([#62442](https://github.com/anthropics/claude-code/issues/62442)). If the dialog
-> misbehaves, write `~/.config/flutterflow/claude-env.sh` from your own terminal (the
-> build skill shows the exact command) or let `flutterflow ai init` prompt for the
-> key. The hook only auto-removes `claude-env.sh` files it wrote itself (stamped with
-> a `# managed-by:` first line) — a hand-written file is never deleted.
+> ([#62442](https://github.com/anthropics/claude-code/issues/62442)). Until those are
+> fixed, the build skill sets the key without the dialog: copy the key from
+> <https://app.flutterflow.io/account> and tell Claude *"I copied my FlutterFlow API
+> key"* — a bundled script ([`store-key-from-clipboard.sh`](plugins/flutterflow/scripts/store-key-from-clipboard.sh))
+> reads the clipboard once, validates it, writes `~/.config/flutterflow/claude-env.sh`
+> (0600), and clears the clipboard, so the key never enters the chat. Over
+> SSH/headless, the skill gives a terminal one-liner instead, or let
+> `flutterflow ai init` prompt for the key. The hook only auto-removes `claude-env.sh`
+> files it wrote itself (stamped with a `# managed-by:` first line) — user-provided
+> files are never deleted.
 
 **Rotating or removing the token.** After updating it via `/plugin configure
 flutterflow@flutterflow`, **restart the session** — the hook only rewrites

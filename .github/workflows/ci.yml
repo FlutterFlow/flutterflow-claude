@@ -49,17 +49,22 @@ jobs:
         run: |
           bash -n plugins/flutterflow/hooks/session-start.sh
           bash -n plugins/flutterflow/hooks/session-start.test.sh
+          bash -n plugins/flutterflow/scripts/store-key-from-clipboard.sh
+          bash -n plugins/flutterflow/scripts/store-key-from-clipboard.test.sh
 
       - name: ShellCheck (advisory)
         run: |
           if command -v shellcheck >/dev/null 2>&1; then
             shellcheck -S warning plugins/flutterflow/hooks/session-start.sh || true
+            shellcheck -S warning plugins/flutterflow/scripts/store-key-from-clipboard.sh || true
           else
             echo "shellcheck not available — skipping"
           fi
 
       - name: Security-property tests
-        run: bash plugins/flutterflow/hooks/session-start.test.sh
+        run: |
+          bash plugins/flutterflow/hooks/session-start.test.sh
+          bash plugins/flutterflow/scripts/store-key-from-clipboard.test.sh
 
   plugin-validate:
     name: claude plugin validate (best-effort)
