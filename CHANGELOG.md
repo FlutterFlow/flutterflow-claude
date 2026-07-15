@@ -14,11 +14,62 @@ commit a version number refers to.
 ## [Unreleased]
 
 ### Changed
+- Build skill: project selection can use `flutterflow ai projects --json`
+  (CLI > 0.0.38) to list the account's projects and present a picker via
+  AskUserQuestion — top few most-recent projects plus free-text fuzzy match —
+  falling back to asking for the project URL on CLIs without the command.
+
+## [0.1.5] — 2026-07-14
+
+Catches the plugin up with `flutterflow_cli` 0.0.38 and the current
+`flutterflow ai` SDK surface (per-workspace MCP auto-registration, branch/merge
+workflow, onboarding wizard).
+
+### Changed
+- **Pinned CLI bumped to `flutterflow_cli` 0.0.38** (from 0.0.37) — brings the
+  interactive onboarding wizard (bare `flutterflow ai` in a terminal) and an
+  `init` fast-fail when the target path already exists. The pin only affects
+  fresh installs: the hook installs when `flutterflow` is missing, it does not
+  upgrade an existing install.
+- **README "Optional: native MCP" section replaced** with "Native MCP —
+  registered automatically per workspace": `flutterflow ai init` (and
+  `refresh-workspace`) now auto-register the FlutterFlow AI MCP server with
+  detected agents — for Claude Code, a project-scoped `.mcp.json` at the
+  workspace root — launching the workspace's vendored server directly with
+  `dart run` and reading the key from the workspace `.flutterflow/.env`.
+  Documents the MCP-only live FlutterFlow Desktop bridge, and notes the CLI
+  itself supports Windows end-to-end (only the SessionStart hook needs `bash`).
+- **Build skill refreshed against the 0.0.38 CLI/SDK:**
+  - `init`: `--project` documented as optional — omitting it scaffolds an
+    unbound workspace whose project is created on first `run`; documents the
+    managed in-workspace guidance files (`CLAUDE.md`, `AGENTS.md`,
+    `references/`, `patterns/`), the MCP auto-registration, and `--yes`.
+  - New "Branches & merges" section covering the `branch` sub-commands
+    (list/current/status/create/checkout/close/restore) and the three-way
+    `merge` workflow (start/status/explain/auto/resolve/verify/commit/abort).
+  - Orient: added `upgrade --check` (agent-parseable, last line
+    `newer_available: true|false`); other-surfaces list gains `test`,
+    `test-pilot`, `issue`, `mcp`.
+  - Fixed the outside-workspace gotcha: commands fail with exit 1 and "No
+    FlutterFlow AI workspace found from …" (not "exit 64 /
+    No .flutterflow/config.yaml"), and the workspace root is found from any
+    subdirectory, not just its top level.
+  - Credential-cache gotcha refined: keys supplied via `FF_API_KEY` (this
+    plugin's path) are never persisted to `~/.flutterflow/credentials.json`;
+    the cache exists only after an interactive or `--api-key` init.
+  - Key-setup fallback for SSH-less users now mentions the wizard (bare
+    `flutterflow ai` in their own terminal).
 - README install docs restructured: installing from GitHub
   (`/plugin marketplace add FlutterFlow/flutterflow-claude`) is the primary path;
   local-clone install is documented as the development/testing path, with the
   repo-root requirement for `marketplace add ./` spelled out and a troubleshooting
   note quoting the real CLI errors.
+
+### Removed
+- `mcp.example.json` — superseded by the CLI's per-workspace MCP
+  auto-registration; its `command: "flutterflow"` launch shape risked breaking
+  the MCP stdio handshake (the pub shim prints "Resolving dependencies…" to
+  stdout when its snapshot is stale).
 
 ## [0.1.4] — 2026-07-02
 
@@ -87,7 +138,8 @@ First tagged release.
   configured API token to `FF_API_KEY` for the CLI, and the `build` skill — a
   guided orient → validate → apply workflow over `flutterflow ai`.
 
-[Unreleased]: https://github.com/FlutterFlow/flutterflow-claude/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/FlutterFlow/flutterflow-claude/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.5
 [0.1.4]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.4
 [0.1.3]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.3
 [0.1.2]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.2

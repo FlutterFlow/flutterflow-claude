@@ -21,8 +21,7 @@ jobs:
           for f in \
             .claude-plugin/marketplace.json \
             plugins/flutterflow/.claude-plugin/plugin.json \
-            plugins/flutterflow/hooks/hooks.json \
-            plugins/flutterflow/mcp.example.json; do
+            plugins/flutterflow/hooks/hooks.json; do
             python3 -c "import json; json.load(open('$f'))" && echo "ok: $f"
           done
 

@@ -22,7 +22,7 @@ fi
 
 # Pin the CLI version so this auto-run hook never floats to an unreviewed
 # 'latest' from pub.dev. Bump deliberately alongside the plugin version.
-FF_CLI_VERSION="0.0.37"
+FF_CLI_VERSION="0.0.38"
 
 # -----------------------------------------------------------------------------
 # 1. Make common Dart / Flutter / pub-cache bin dirs visible.

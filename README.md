@@ -25,7 +25,8 @@ The user must already have:
 
 The SessionStart hook is a POSIX shell script run with `bash`, so **macOS and Linux
 are supported out of the box**. On Windows it needs a `bash` on PATH (Git Bash or
-WSL); without one the hook no-ops and you'd drive `flutterflow ai` manually.
+WSL); without one the hook no-ops and you'd install/drive the CLI manually — the
+CLI itself supports Windows end-to-end, only this plugin's hook needs `bash`.
 
 ## Install
 
@@ -119,16 +120,35 @@ rm -f ~/.config/flutterflow/claude-env.sh
 flutterflow ai logout --all   # clears ~/.flutterflow/credentials.json (bare `logout` only lists)
 ```
 
-## Optional: native MCP instead of the CLI skill
+(The CLI's credential cache is only written when a key was typed at an interactive
+prompt or passed via `--api-key`; keys provided through the env file are never
+persisted, so `logout --all` may report nothing to clear.)
 
-Power users can run FlutterFlow's own MCP server instead. See
-[`plugins/flutterflow/mcp.example.json`](plugins/flutterflow/mcp.example.json):
-add `"mcpServers": "./mcp.example.json"` to the plugin manifest. The key is injected
-as `FF_API_KEY` via `${user_config.api_token}` (resolved by Claude Code, so no shell
-env is needed). Caveats: the `flutterflow` binary must be resolvable where Claude
-Code launches the server (a GUI app may need an absolute command path), and the
-server must run inside an initialized workspace (`flutterflow ai init`) — point
-`--workspace` at it.
+## Native MCP — registered automatically per workspace
+
+There's nothing to wire up by hand: `flutterflow ai init` (and
+`refresh-workspace`) auto-register the FlutterFlow AI MCP server with the agents
+they detect. For Claude Code that's a project-scoped `.mcp.json` written at the
+workspace root whenever the `claude` binary is on PATH at init time (or a
+`.mcp.json` already exists). Open a session rooted in the workspace and approve
+the server when prompted — the `flutterflow ai` surface is then available as MCP
+tools, including MCP-only extras like the live FlutterFlow Desktop bridge
+(inspect canvas/IDE state and drive local runs while the Desktop app is running
+on the same machine).
+
+Notes:
+
+- The registration launches the workspace's vendored server directly
+  (`dart run <workspace>/.flutterflow/sdk/… --dir <workspace>`), and the server
+  reads the key from the workspace's `.flutterflow/.env`. Don't hand-write
+  configs that launch the `flutterflow` pub-shim instead (e.g.
+  `flutterflow ai mcp`): when its snapshot is stale the shim prints "Resolving
+  dependencies…" to stdout, which corrupts the MCP handshake — this is why the
+  plugin no longer ships an `mcp.example.json`.
+- `dart` must be resolvable by whatever launches the server; a GUI-launched
+  Claude Code may need Dart's bin directory on the system PATH.
+- The CLI skill and the MCP server drive the same project state — use whichever
+  surface a session offers; they don't conflict.
 
 ## Repo layout
 
@@ -147,10 +167,13 @@ flutterflow-claude/
 │       │   ├── hooks.json            # registers the SessionStart hook
 │       │   ├── session-start.sh      # Dart-aware self-healing installer
 │       │   └── session-start.test.sh # security-property tests for the hook
-│       ├── skills/
-│       │   └── build/
-│       │       └── SKILL.md          # build workflow (init → orient → validate → apply)
-│       └── mcp.example.json          # optional native-MCP path (off by default)
+│       ├── scripts/
+│       │   ├── store-key-from-clipboard.sh      # clipboard → env-file key hand-off
+│       │   └── store-key-from-clipboard.test.sh # leak-freedom tests for the script
+│       └── skills/
+│           └── build/
+│               └── SKILL.md          # build workflow (init → orient → validate → apply)
+├── CHANGELOG.md
 └── README.md
 ```
 

@@ -89,10 +89,12 @@ Set the key via one of these paths, then re-run the preflight:
        printf "export FF_API_KEY=%q\nexport FLUTTERFLOW_API_TOKEN=%q\n" "$K" "$K" \
        > ~/.config/flutterflow/claude-env.sh'; }
    ```
-3. **Let `init` collect it:** in the user's own terminal, `flutterflow ai init
-   <name> --project <project-id>` with no `FF_API_KEY` in the env prompts for the
-   key and caches it (`~/.flutterflow/credentials.json` plus the workspace `.env`),
-   so in-workspace commands authenticate without any env file.
+3. **Let the CLI collect it:** in the user's own terminal, bare `flutterflow ai`
+   (outside a workspace) launches an onboarding wizard — key prompt with echo off,
+   then a searchable project picker. `flutterflow ai init <name> --project
+   <project-id>` with no `FF_API_KEY` in the env prompts for the key too. Either
+   way the key is cached (`~/.flutterflow/credentials.json` plus the workspace
+   `.env`), so in-workspace commands authenticate without any env file.
 
 The SessionStart hook never deletes user-provided key files — it only auto-removes
 files it wrote itself (first line `# managed-by: flutterflow-claude plugin`).
@@ -110,28 +112,55 @@ non-interactively.
 ## 1. Workspace — required before the toolbox
 
 Every `flutterflow ai` toolbox command must run from **inside an initialized
-workspace** (a directory containing `.flutterflow/config.yaml`). Check first:
+workspace** — a directory containing `.flutterflow/config.yaml` (any subdirectory
+works too; the CLI walks up to find the root). Check first:
 
 ```bash
 [ -f .flutterflow/config.yaml ] && echo "workspace: ok" || echo "workspace: NONE"
 ```
 
-If there's none, scaffold one. Ask the user for a workspace name and their
-FlutterFlow project id (it's in the project URL: https://app.flutterflow.io/project/<id>):
+If there's none, scaffold one. Ask the user for a workspace name, and whether they're
+editing an **existing** project (its id is in the project URL:
+https://app.flutterflow.io/project/<id>) or starting a **new** app:
 
 ```bash
-flutterflow ai init <name> --project <project-id>
+flutterflow ai init <name> --project <project-id>   # existing project
+flutterflow ai init <name>                          # new app — created on first `run`
 cd <name>
 ```
 
-This runs non-interactively: `--project` selects the project up front and the key
-comes from `FF_API_KEY` in the env (`--resume` re-enters an existing scaffold). Don't
+This runs non-interactively: `--project` (when given) binds the project up front and
+the key comes from `FF_API_KEY` in the env (`--resume` re-enters an existing scaffold;
+the target path must be new or empty, or init fast-fails). Don't
 pass the key on the command line (e.g. `--api-key`) — that puts the secret into a Bash
 invocation and the model context; rely on `FF_API_KEY` from the sourced env file.
 `init` writes `.flutterflow/.env` with `FF_API_KEY`
 and `FF_DSL_PROJECT_ID`, so later commands in this workspace are authenticated and
 project-scoped. See `flutterflow ai init --help` for more (`--env`, `--sdk-path`,
-`--pre-release`, `--no-save`).
+`--pre-release`, `--no-save`, `--yes`).
+
+**Existing project, but no id?** Newer CLIs (> 0.0.38) list the account's projects
+non-interactively — names and ids aren't secrets, so this is safe to show in chat:
+
+```bash
+flutterflow ai projects --json [--match <text>]
+```
+
+stdout is exactly one JSON array of `{id, name, isLibrary, lastEditMillis}`,
+most recently edited first (notices go to stderr). Offer the top few as an
+AskUserQuestion — one option per project (name + id in the description, since
+names can repeat) plus a "create a new app" option — and let Other capture a
+name or id to fuzzy-match against the full list, re-asking only when ambiguous.
+If the command fails (older CLI — outside a workspace it exits with "No
+FlutterFlow AI workspace found"), fall back to asking for the project URL.
+
+`init` also scaffolds guidance **inside the workspace** — `CLAUDE.md`, `AGENTS.md`,
+`references/`, `patterns/` (managed files; `refresh-workspace` overwrites them) —
+and auto-registers the FlutterFlow MCP server with detected agents, including a
+project-scoped `.mcp.json` for Claude Code. A session rooted in the workspace may
+therefore offer `flutterflow_ai` MCP tools alongside this skill; both drive the
+same project state, so use whichever is available. Follow the workspace's own
+CLAUDE.md where it adds specifics.
 
 ## 2. Orient — read before you write
 
@@ -144,6 +173,9 @@ The read commands take the project id as a positional argument:
 - `flutterflow ai search <project-id> --query <text>` — find by name or visible text (`-q` works too).
 - `flutterflow ai doctor` / `flutterflow ai context-check` — local diagnostics.
 - `flutterflow ai docs [topic]` — DSL and command docs from the terminal.
+- `flutterflow ai upgrade --check` — SDK freshness as `key: value` lines (last line
+  `newer_available: true|false`). The workspace guidance asks agents to run this once
+  per session and offer `flutterflow ai upgrade` when a newer build exists.
 
 If `context-check` reports STALE: `flutterflow ai refresh-context <project-id>`.
 
@@ -163,8 +195,28 @@ user the output; don't apply blind.
 - `flutterflow ai trace latest` | `trace show <run-id>` | `trace export <run-id> [--out <file>]`.
 - `flutterflow ai history [--all] [--limit <N>]` | `history show <run-id>`.
 
-Other surfaces exist too (`codegen`, `branch`, `merge`, `support`, `upgrade`,
-`refresh-workspace`, `precache`, `create-project`, `logout`) — use `--help`.
+## 5. Branches & merges
+
+The active branch is tracked in `.flutterflow/config.yaml`, and `run`/`validate`
+target it automatically.
+
+- `flutterflow ai branch list | current | status` — list branches / print the active
+  one / compare local head against the server tip.
+- `flutterflow ai branch create <name> [--from <commit-id>] [--include-uncommitted] [--checkout]`.
+- `flutterflow ai branch checkout <name> [--force]` — switches the workspace
+  (regenerates `generated_code/`; refuses on a dirty tree without `--force`).
+- `flutterflow ai branch close <name>` / `branch restore <name>` — soft-delete
+  (30-day window) / restore.
+- `flutterflow ai merge start --from <branch> --into <branch>` — server-side
+  three-way merge; the bundle materializes under `.flutterflow/merges/<id>/` and you
+  edit `working/` directly. Then: `merge status`, `merge explain <file> [--json]`,
+  `merge auto`, `merge resolve <file>`, `merge verify` (no-loss check),
+  `merge commit -m "<msg>"` (refuses while drops exist unless `--accept-drops`),
+  `merge abort`.
+
+Other surfaces exist too (`codegen`, `test`, `test-pilot`, `issue`, `support`,
+`upgrade`, `refresh-workspace`, `precache`, `create-project`, `mcp`, `logout`) —
+use `--help`.
 
 ## Gotchas
 - **Write project URLs with the scheme.** When telling the user where a project
@@ -173,13 +225,16 @@ Other surfaces exist too (`codegen`, `branch`, `merge`, `support`, `upgrade`,
   renders as plain text in chat, not a clickable link.
 - **Auth var is `FF_API_KEY`**, not `FLUTTERFLOW_API_TOKEN`. The same account-page
   token works for both; the plugin sets both, but `flutterflow ai` reads only `FF_API_KEY`.
-- **Workspace required.** Toolbox commands fail (exit 64 / "No .flutterflow/config.yaml")
-  outside an initialized workspace — run `flutterflow ai init` first.
+- **Workspace required.** Toolbox commands fail (exit 1, "No FlutterFlow AI
+  workspace found from …") outside an initialized workspace — run
+  `flutterflow ai init` first. Inside one, usage errors exit 64.
 - **project-id is required** on status/inspect/resources/search; it is not inferred
   from the directory for these read commands.
 - **PATH:** `dart pub global activate` installs to `~/.pub-cache/bin`; use the
   preamble or add it to `~/.zshrc`.
 - **GUI vs shell env:** running via Bash (this skill) reads your shell profile and
   the token file; a GUI-launched MCP server may not — which is why this skill drives the CLI.
-- **Credential cache:** `flutterflow ai init` also caches the key in
-  `~/.flutterflow/credentials.json`; `flutterflow ai logout` clears it.
+- **Credential cache:** `flutterflow ai init` caches the key in
+  `~/.flutterflow/credentials.json` only when it was typed at the prompt or passed
+  via `--api-key`; keys from `FF_API_KEY` (this skill's path) are never persisted.
+  `flutterflow ai logout --all` clears the cache.
