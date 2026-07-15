@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "flutterflow",
   "displayName": "FlutterFlow",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Agentic building with FlutterFlow. Auto-installs the FlutterFlow CLI (handles a missing Dart SDK gracefully) and provides a guided orient → validate → apply workflow over `flutterflow ai`.",
   "author": {
     "name": "FlutterFlow",

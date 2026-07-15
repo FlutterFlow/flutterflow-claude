@@ -13,6 +13,8 @@ commit a version number refers to.
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-07-15
+
 ### Changed
 - Build skill: project selection can use `flutterflow ai projects --json`
   (CLI > 0.0.38) to list the account's projects and present a picker via
@@ -138,7 +140,8 @@ First tagged release.
   configured API token to `FF_API_KEY` for the CLI, and the `build` skill — a
   guided orient → validate → apply workflow over `flutterflow ai`.
 
-[Unreleased]: https://github.com/FlutterFlow/flutterflow-claude/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/FlutterFlow/flutterflow-claude/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.6
 [0.1.5]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.5
 [0.1.4]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.4
 [0.1.3]: https://github.com/FlutterFlow/flutterflow-claude/releases/tag/v0.1.3
