@@ -27,7 +27,9 @@ printf '#!/bin/sh\nexit 0\n' > "$WORK/bin/flutterflow"
 chmod +x "$WORK/bin/flutterflow"
 
 # run <HOME> <TOKEN> <stderr-file>
-run() { HOME="$1" PATH="$WORK/bin:$PATH" CLAUDE_PLUGIN_OPTION_API_TOKEN="$2" bash "$HOOK" 2>"$3"; }
+# PUB_CACHE points into the throwaway HOME (no lockfile there), so the hook's
+# upgrade check never sees the runner's real CLI and never runs a real `dart`.
+run() { HOME="$1" PUB_CACHE="$1/.pub-cache" PATH="$WORK/bin:$PATH" CLAUDE_PLUGIN_OPTION_API_TOKEN="$2" bash "$HOOK" 2>"$3"; }
 
 echo "== A: token set -> file 600, dir 700, both exports present =="
 H="$WORK/A"; mkdir -p "$H"
@@ -103,6 +105,67 @@ grep -q 'app.flutterflow.io/account' "$WORK/g1.log" \
 run "$H" '' "$WORK/g2.log"
 grep -q 'app.flutterflow.io/account' "$WORK/g2.log" \
   && fail "notice repeated within throttle window" || pass "notice throttled on the next run"
+
+echo
+echo "== U: installed CLI older than pub.dev latest -> upgrade, throttled; never downgrade =="
+# Fakes: `dart` records its arguments; `curl` serves a pub.dev-shaped response
+# for $FAKE_LATEST (or fails when it's empty) — no network, no real installs.
+mkdir -p "$WORK/ubin"
+cp "$WORK/bin/flutterflow" "$WORK/ubin/flutterflow"
+printf '#!/bin/sh\necho "$*" >> "$DART_LOG"\nexit 0\n' > "$WORK/ubin/dart"
+cat > "$WORK/ubin/curl" <<'SH'
+#!/bin/sh
+echo x >> "$CURL_LOG"
+[ -n "$FAKE_LATEST" ] || exit 7
+printf '{"name":"flutterflow_cli","latest":{"version":"%s","pubspec":{}},"versions":[{"version":"0.0.1"}]}' "$FAKE_LATEST"
+SH
+chmod +x "$WORK/ubin/dart" "$WORK/ubin/curl"
+# seed_lock <HOME> <version> <source> — fake a pub-global lockfile entry.
+seed_lock() {
+  mkdir -p "$1/.pub-cache/global_packages/flutterflow_cli"
+  printf 'packages:\n  flutterflow_cli:\n    dependency: "direct main"\n    source: %s\n    version: "%s"\n  glob:\n    version: "9.9.9"\n' \
+    "$3" "$2" > "$1/.pub-cache/global_packages/flutterflow_cli/pubspec.lock"
+}
+# urun <HOME> <fake-latest> — run the hook with the fakes on PATH.
+urun() {
+  HOME="$1" PUB_CACHE="$1/.pub-cache" PATH="$WORK/ubin:$PATH" DART_LOG="$1/dart.log" \
+    CURL_LOG="$1/curl.log" FAKE_LATEST="$2" CLAUDE_PLUGIN_OPTION_API_TOKEN=x \
+    bash "$HOOK" 2>"$1/hook.log"
+}
+
+H="$WORK/U1"; mkdir -p "$H"; seed_lock "$H" "0.0.1" hosted
+urun "$H" "0.0.41"
+grep -qx "pub global activate flutterflow_cli 0.0.41" "$H/dart.log" 2>/dev/null \
+  && pass "older hosted CLI upgraded to pub.dev latest" || fail "older CLI not upgraded to latest"
+urun "$H" "0.0.41"
+{ [ "$(wc -l < "$H/dart.log")" -eq 1 ] && [ "$(wc -l < "$H/curl.log")" -eq 1 ]; } \
+  && pass "version check throttled on the next run" || fail "re-checked within the throttle window"
+
+H="$WORK/U2"; mkdir -p "$H"; seed_lock "$H" "0.0.41" hosted
+urun "$H" "0.0.41"
+[ ! -e "$H/dart.log" ] && pass "CLI already at latest left alone" || fail "dart invoked for an up-to-date CLI"
+
+H="$WORK/U3"; mkdir -p "$H"; seed_lock "$H" "99.0.0" hosted
+urun "$H" "0.0.41"
+[ ! -e "$H/dart.log" ] && pass "newer CLI never downgraded" || fail "dart invoked for a newer CLI"
+
+H="$WORK/U4"; mkdir -p "$H"; seed_lock "$H" "0.0.1" path
+urun "$H" "0.0.41"
+{ [ ! -e "$H/dart.log" ] && [ ! -e "$H/curl.log" ]; } \
+  && pass "path-activated (dev checkout) CLI left alone, no network" || fail "path activation was checked or upgraded"
+
+H="$WORK/U5"; mkdir -p "$H"
+urun "$H" "0.0.41"
+{ [ ! -e "$H/dart.log" ] && [ ! -e "$H/curl.log" ]; } \
+  && pass "no lockfile (non-pub install) -> no check, no upgrade" || fail "checked or upgraded without a lockfile"
+
+H="$WORK/U6"; mkdir -p "$H"; seed_lock "$H" "0.0.1" hosted
+if urun "$H" ""; then pass "offline (curl fails) -> exit 0"; else fail "non-zero exit when offline"; fi
+[ ! -e "$H/dart.log" ] && pass "offline -> no upgrade attempted" || fail "dart invoked while offline"
+
+H="$WORK/U7"; mkdir -p "$H"; seed_lock "$H" "0.0.1" hosted
+urun "$H" '0.0.99;touch pwned'
+[ ! -e "$H/dart.log" ] && pass "malformed latest version rejected" || fail "dart invoked with a malformed version"
 
 echo
 echo "== F: HOME unset -> clean exit 0, no crash, no writes =="

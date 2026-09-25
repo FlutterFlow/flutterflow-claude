@@ -13,6 +13,44 @@ commit a version number refers to.
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-09-25
+
+Catches the plugin up with `flutterflow_cli` / FlutterFlow AI SDK 0.0.41.
+
+### Fixed
+- **`flutterflow ai init` failed for new users.** The hook pinned
+  `flutterflow_cli` 0.0.38, but `init` always downloads the latest SDK, and SDK
+  0.0.41 (released 2026-09-23) requires CLI ≥ 0.0.41 — so fresh installs stopped
+  with *"This FlutterFlow AI snapshot requires flutterflow_cli >= 0.0.41"*.
+
+### Changed
+- **The hook now tracks the latest `flutterflow_cli` instead of a pin**, so it
+  can't fall behind the SDK again. Fresh installs get the latest release. For
+  existing installs, the hook reads the installed version from the pub-global
+  lockfile and, at most once every 6h, checks pub.dev (3s timeout, silent when
+  offline); if a newer release exists it runs
+  `dart pub global activate flutterflow_cli <latest>`. Forward-only (never
+  downgrades), skipped for path/git activations, logged to
+  `~/.cache/flutterflow-claude/upgrade.log`. Covered by new hook tests with
+  pub.dev and `dart` faked.
+- **Build skill: removed the `flutterflow ai projects --json` step** added in
+  0.1.6 — no released CLI/SDK (through 0.0.41 and beta 0.0.41+1) ships that
+  command. The skill asks for the project URL instead.
+- Build skill refreshed against CLI/SDK 0.0.41:
+  - New "CLI is too old" recovery for the minimum-CLI error.
+  - Page-file editing workflow (`init --page-dsl`, `orient` → edit →
+    `run --dry-run` → `run`, `scaffold edit`), with the workspace `CLAUDE.md` as
+    the authority.
+  - Orient gains `orient` and `review`; other surfaces gain `assets` and
+    `scaffold`, with a note that media must be uploaded, not pushed in the DSL.
+  - Re-running `init` in an existing workspace refreshes managed guidance.
+  - Gotchas: the known Supabase/Postgres list/detail validation gap
+    ([#1](https://github.com/FlutterFlow/flutterflow-claude/issues/1)) and its
+    workaround, and that MCP commit tools require `userPrompts` (stored
+    server-side — never include secrets).
+- README: documents the CLI auto-upgrade behavior and what the CLI sends
+  (installation id with its opt-out, AI commit attribution, MCP user prompts).
+
 ## [0.1.6] — 2026-07-15
 
 ### Changed

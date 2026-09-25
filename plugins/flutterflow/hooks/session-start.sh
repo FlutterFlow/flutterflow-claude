@@ -3,7 +3,7 @@
 #
 # Goal: make the `flutterflow` CLI available with zero user effort, and fail
 # soft no matter what. Runs on every session start/resume; it is a fast no-op
-# once the CLI is installed.
+# once the CLI is installed (plus a pub.dev version check at most every 6h).
 #
 # It never exits non-zero (a failing SessionStart hook must not block a session).
 
@@ -20,9 +20,11 @@ if [ -z "${HOME:-}" ]; then
   exit 0
 fi
 
-# Pin the CLI version so this auto-run hook never floats to an unreviewed
-# 'latest' from pub.dev. Bump deliberately alongside the plugin version.
-FF_CLI_VERSION="0.0.38"
+# Track the latest flutterflow_cli on pub.dev rather than a pin. The CLI
+# downloads the latest FlutterFlow AI SDK at `init`/`upgrade`, and each SDK
+# build declares a minimum CLI version — a pinned CLI that falls behind breaks
+# `init` for everyone, so the hook keeps the CLI current instead.
+PUB_API_URL="https://pub.dev/api/packages/flutterflow_cli"
 
 # -----------------------------------------------------------------------------
 # 1. Make common Dart / Flutter / pub-cache bin dirs visible.
@@ -110,14 +112,80 @@ else
   fi
 fi
 
+STAMP_DIR="$HOME/.cache/flutterflow-claude"
+
+# Version of the pub-global flutterflow_cli, read from its lockfile (cheap — no
+# CLI launch). Prints nothing for path/git activations (a developer's local
+# checkout) or when the CLI didn't come from `dart pub global activate`.
+installed_cli_version() {
+  local lock="${PUB_CACHE:-$HOME/.pub-cache}/global_packages/flutterflow_cli/pubspec.lock"
+  [ -f "$lock" ] || return 0
+  awk '
+    /^  flutterflow_cli:/ { f = 1; next }
+    f && /^  [^ ]/ { exit }
+    f && /^    source:/ { src = $2 }
+    f && /^    version:/ { v = $2; gsub(/"/, "", v) }
+    END { if (src == "hosted" && v != "") print v }
+  ' "$lock" 2>/dev/null
+}
+
+# version_lt A B — true when A < B, comparing MAJOR.MINOR.PATCH numerically
+# (any -prerelease / +build suffix is ignored).
+version_lt() {
+  local a="${1%%[-+]*}" b="${2%%[-+]*}" i x y
+  for i in 1 2 3; do
+    x=$(printf '%s' "$a" | cut -d. -f"$i"); y=$(printf '%s' "$b" | cut -d. -f"$i")
+    x=${x:-0}; y=${y:-0}
+    case "$x$y" in *[!0-9]*) return 1 ;; esac
+    [ "$x" -lt "$y" ] && return 0
+    [ "$x" -gt "$y" ] && return 1
+  done
+  return 1
+}
+
+# Latest published flutterflow_cli version from pub.dev, or nothing on any
+# failure (offline, no curl, slow network, unexpected response). Only a plain
+# MAJOR.MINOR.PATCH is accepted, since it's passed to `dart pub global activate`.
+latest_cli_version() {
+  command -v curl >/dev/null 2>&1 || return 0
+  local v
+  v=$(curl -fsS --max-time 3 "$PUB_API_URL" 2>/dev/null \
+    | grep -o '"latest":{"version":"[^"]*"' | head -1 | sed 's/.*"version":"//; s/"$//')
+  case "$v" in
+    *[!0-9.]* | "" | .* | *. | *..*) return 0 ;;
+    *.*.*) printf '%s' "$v" ;;
+  esac
+}
+
 # -----------------------------------------------------------------------------
-# 3. Already installed? Nothing more to do.
+# 3. Already installed? Upgrade to the latest release if it's older, else done.
+#    Checks pub.dev at most once / 6h (3s timeout, silent when offline).
+#    Forward-only (never downgrades) and skipped for path/git activations.
 # -----------------------------------------------------------------------------
 if command -v flutterflow >/dev/null 2>&1; then
+  CURRENT=$(installed_cli_version)
+  if [ -n "$CURRENT" ] && command -v dart >/dev/null 2>&1; then
+    mkdir -p "$STAMP_DIR" 2>/dev/null
+    STAMP="$STAMP_DIR/last-update-check"
+    if [ -z "$(find "$STAMP" -mmin -360 2>/dev/null)" ]; then
+      # Stamp before the network call so an offline machine isn't re-checked
+      # (and delayed by the timeout) on every session start.
+      : > "$STAMP"
+      LATEST=$(latest_cli_version)
+      if [ -n "$LATEST" ] && version_lt "$CURRENT" "$LATEST"; then
+        log "Upgrading the FlutterFlow CLI ($CURRENT → $LATEST)…"
+        if dart pub global activate flutterflow_cli "$LATEST" >"$STAMP_DIR/upgrade.log" 2>&1; then
+          log "✓ FlutterFlow CLI upgraded to $LATEST. Existing workspaces refresh their SDK on the next command."
+        else
+          log "✗ CLI upgrade failed. See the log: $STAMP_DIR/upgrade.log"
+          log "  Upgrade manually with: dart pub global activate flutterflow_cli"
+        fi
+      fi
+    fi
+  fi
   exit 0
 fi
 
-STAMP_DIR="$HOME/.cache/flutterflow-claude"
 mkdir -p "$STAMP_DIR" 2>/dev/null
 
 # -----------------------------------------------------------------------------
@@ -134,8 +202,8 @@ if command -v dart >/dev/null 2>&1; then
     exit 0
   fi
 
-  log "Installing the FlutterFlow CLI (flutterflow_cli $FF_CLI_VERSION)…"
-  if dart pub global activate flutterflow_cli "$FF_CLI_VERSION" >"$STAMP_DIR/activate.log" 2>&1; then
+  log "Installing the FlutterFlow CLI (latest flutterflow_cli)…"
+  if dart pub global activate flutterflow_cli >"$STAMP_DIR/activate.log" 2>&1; then
     log "✓ FlutterFlow CLI installed — you're ready for agentic building."
     if ! command -v flutterflow >/dev/null 2>&1; then
       log "One more step: add Dart's pub-cache bin to your PATH, then restart:"

@@ -7,8 +7,9 @@ as possible.
 It ships one plugin, **`flutterflow`**, which:
 
 - **Auto-installs the FlutterFlow CLI** (`dart pub global activate flutterflow_cli`)
-  on session start — and **handles a missing Dart SDK** by pointing the user at an
-  install instead of failing silently.
+  on session start and keeps it at the latest release (the FlutterFlow AI SDK
+  requires a minimum CLI) — and **handles a missing Dart SDK** by pointing the
+  user at an install instead of failing silently.
 - **Prompts for the API token** at enable time and stores it securely.
 - Adds a **guided build skill** (workspace `init`, then orient → validate → apply)
   that drives `flutterflow ai` over the Bash tool (which reads your shell profile),
@@ -70,6 +71,13 @@ session start the CLI installs itself; after that the hook is a fast pass that j
 refreshes your PATH and the key file (no install work) — so a rotated key is picked
 up next session.
 
+**CLI version.** The hook tracks the latest `flutterflow_cli` on pub.dev. At most
+once every 6 hours it checks pub.dev (3-second timeout, silent when offline) and
+upgrades an older install (log at `~/.cache/flutterflow-claude/upgrade.log`). It
+never downgrades and leaves path/git activations alone. Staying current matters
+because `flutterflow ai init` always downloads the latest FlutterFlow AI SDK, and an
+SDK build refuses to run under a CLI older than its minimum.
+
 ## Using it
 
 Ask Claude to build something in FlutterFlow — the **build** skill
@@ -123,6 +131,18 @@ flutterflow ai logout --all   # clears ~/.flutterflow/credentials.json (bare `lo
 (The CLI's credential cache is only written when a key was typed at an interactive
 prompt or passed via `--api-key`; keys provided through the env file are never
 persisted, so `logout --all` may report nothing to clear.)
+
+## What the FlutterFlow CLI sends
+
+These are FlutterFlow CLI/SDK behaviors, not something this plugin adds:
+
+- **Installation id** (CLI ≥ 0.0.40): each API call carries a random per-machine
+  id stored at `~/.flutterflow/install_id` (no hostname, MAC, or user name). Set
+  `FLUTTERFLOW_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` to turn it off.
+- **AI attribution on commits**: commits made through the CLI/MCP show an AI badge
+  in FlutterFlow's version history; the API-key owner stays the author. The MCP
+  commit tools also send the user prompt(s) behind each change, stored server-side
+  and not visible to collaborators.
 
 ## Native MCP — registered automatically per workspace
 
@@ -189,7 +209,7 @@ claude plugin validate ./plugins/flutterflow --strict
 
 Run the SessionStart hook's security-property tests (token file perms, safe
 `%q` quoting, cleanup when the token is cleared, refusal to follow a symlinked
-config dir). These also run in CI on every push and PR:
+config dir, CLI upgrade checks with pub.dev faked). These also run in CI on every push and PR:
 
 ```bash
 bash plugins/flutterflow/hooks/session-start.test.sh
