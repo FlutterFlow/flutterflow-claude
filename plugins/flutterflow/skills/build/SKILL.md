@@ -43,6 +43,14 @@ command -v flutterflow >/dev/null && echo "cli: ok" || echo "cli: MISSING"
 - `dart` NOT available → Dart (bundled with Flutter) must be installed first:
   https://docs.flutter.dev/get-started/install. Don't install Flutter unasked.
 
+### If a command says the CLI is too old
+The CLI downloads the latest FlutterFlow AI SDK at `init`/`upgrade`, and each SDK
+build requires a minimum CLI. An outdated CLI fails with *"This FlutterFlow AI
+snapshot requires flutterflow_cli >= X, but you are running Y"*. Fix it with
+`dart pub global activate flutterflow_cli`, then retry — on CLI ≥ 0.0.41 the first
+command in an existing workspace refreshes its SDK automatically. (The plugin's
+SessionStart hook also keeps the CLI at the latest release, checking at most every 6h.)
+
 ### If `key: MISSING`
 `flutterflow ai` authenticates with **`FF_API_KEY`**. If the user doesn't have a key
 yet, point them to **https://app.flutterflow.io/account** to create one.
@@ -136,26 +144,16 @@ pass the key on the command line (e.g. `--api-key`) — that puts the secret int
 invocation and the model context; rely on `FF_API_KEY` from the sourced env file.
 `init` writes `.flutterflow/.env` with `FF_API_KEY`
 and `FF_DSL_PROJECT_ID`, so later commands in this workspace are authenticated and
-project-scoped. See `flutterflow ai init --help` for more (`--env`, `--sdk-path`,
-`--pre-release`, `--no-save`, `--yes`).
+project-scoped. See `flutterflow ai init --help` for more (`--page-dsl`, `--env`,
+`--sdk-path`, `--pre-release`, `--no-save`, `--yes`).
 
-**Existing project, but no id?** Newer CLIs (> 0.0.38) list the account's projects
-non-interactively — names and ids aren't secrets, so this is safe to show in chat:
-
-```bash
-flutterflow ai projects --json [--match <text>]
-```
-
-stdout is exactly one JSON array of `{id, name, isLibrary, lastEditMillis}`,
-most recently edited first (notices go to stderr). Offer the top few as an
-AskUserQuestion — one option per project (name + id in the description, since
-names can repeat) plus a "create a new app" option — and let Other capture a
-name or id to fuzzy-match against the full list, re-asking only when ambiguous.
-If the command fails (older CLI — outside a workspace it exits with "No
-FlutterFlow AI workspace found"), fall back to asking for the project URL.
+**Existing project, but no id?** Ask for the project URL — the id is the last path
+segment. There is no non-interactive project-listing command as of CLI/SDK 0.0.41;
+if `flutterflow ai --help` lists `projects` in a future release, use it instead.
 
 `init` also scaffolds guidance **inside the workspace** — `CLAUDE.md`, `AGENTS.md`,
-`references/`, `patterns/` (managed files; `refresh-workspace` overwrites them) —
+`references/`, `patterns/` (managed files; `refresh-workspace` overwrites them, and
+re-running `init` in an existing workspace refreshes them while keeping user files) —
 and auto-registers the FlutterFlow MCP server with detected agents, including a
 project-scoped `.mcp.json` for Claude Code. A session rooted in the workspace may
 therefore offer `flutterflow_ai` MCP tools alongside this skill; both drive the
@@ -171,6 +169,11 @@ The read commands take the project id as a positional argument:
 - `flutterflow ai inspect <project-id> [--page <name>|--component <name>] [--outline] [--tree] [--dsl-json] [--max-depth <N>] [--output <file>]` — structure of the project or a specific page/component. (Scope is chosen with flags, not a positional.)
 - `flutterflow ai resources <project-id> [--library <name>] [--match <text>]` — list pages/components/types.
 - `flutterflow ai search <project-id> --query <text>` — find by name or visible text (`-q` works too).
+- `flutterflow ai orient [--page <name>|--component <name>|--node <key>]` — one
+  bounded orientation card for the workspace's bound project (no id needed); with
+  `--page-dsl` it names the editable file for that scope.
+- `flutterflow ai review [<project-id>]` — wiring review of the project; defaults to
+  the workspace's bound project.
 - `flutterflow ai doctor` / `flutterflow ai context-check` — local diagnostics.
 - `flutterflow ai docs [topic]` — DSL and command docs from the terminal.
 - `flutterflow ai upgrade --check` — SDK freshness as `key: value` lines (last line
@@ -183,11 +186,21 @@ If `context-check` reports STALE: `flutterflow ai refresh-context <project-id>`.
 
 Changes are declarative Dart (DSL) files. Learn the DSL with `flutterflow ai docs`.
 
-- **Validate (dry run):** `flutterflow ai validate <file.dart>` — checks the change without applying it.
+- **Validate (dry run):** `flutterflow ai validate <file.dart>` or
+  `flutterflow ai run <file.dart> --dry-run` — checks the change without applying it.
 - **Apply:** `flutterflow ai run <file.dart> [--commit-message "<text>"] [--find-or-create]`.
 
 Both take the DSL file as a positional. Always validate before run, and show the
 user the output; don't apply blind.
+
+**Editing existing pages (CLI ≥ 0.0.41).** Workspaces initialized with `--page-dsl`
+get one editable Dart file per page/component under `lib/flutterflow_project/`:
+`orient` → edit that file → `run <file> --dry-run` → `run <file>`. Edits merge by
+stable key and preserve anything the DSL can't express — keep existing `key:`
+values, and don't touch `.g.dart` files. For bulk, cross-page, or schema/custom-code
+changes, `flutterflow ai scaffold edit` creates `dsl/edit.dart` (never overwrites).
+Details: `flutterflow ai docs edit-apis`. The workspace's own `CLAUDE.md` is the
+authority on which path it uses.
 
 ## 4. Audit / record
 
@@ -214,9 +227,11 @@ target it automatically.
   `merge commit -m "<msg>"` (refuses while drops exist unless `--accept-drops`),
   `merge abort`.
 
-Other surfaces exist too (`codegen`, `test`, `test-pilot`, `issue`, `support`,
-`upgrade`, `refresh-workspace`, `precache`, `create-project`, `mcp`, `logout`) —
-use `--help`.
+Other surfaces exist too (`codegen`, `test`, `test-pilot`, `assets`, `scaffold`,
+`issue`, `support`, `upgrade`, `refresh-workspace`, `precache`, `create-project`,
+`mcp`, `logout`) — use `--help`. Media (images, fonts, Lottie/Rive) can't be pushed
+in the DSL: upload with `flutterflow ai assets upload` first, then reference the
+returned path.
 
 ## Gotchas
 - **Write project URLs with the scheme.** When telling the user where a project
@@ -234,6 +249,18 @@ use `--help`.
   preamble or add it to `~/.zshrc`.
 - **GUI vs shell env:** running via Bash (this skill) reads your shell profile and
   the token file; a GUI-launched MCP server may not — which is why this skill drives the CLI.
+- **Supabase/Postgres lists and detail views don't validate yet** (known SDK gap,
+  still present in 0.0.41 —
+  [issue #1](https://github.com/FlutterFlow/flutterflow-claude/issues/1)). Write
+  actions (`PostgresCreate`/`Update`/`Delete`) work, but loading rows into page
+  state and showing them (`PostgresQuery` → `SetState(ActionOutput(...))` →
+  `ListView(source: State(...))`) is rejected with errors like "table not found" or
+  `VALIDATION_GENERATOR_VARIABLE`. Tell the user before building a Supabase-backed
+  list: build the layout and write actions with the DSL, then have them bind the
+  list's Supabase query in the FlutterFlow editor.
+- **MCP commit tools need the user's prompt.** The MCP `run`/`patch`/merge-commit
+  tools require `userPrompts` (verbatim user message(s) behind the change). They're
+  stored server-side with the commit, so never include keys or other secrets in them.
 - **Credential cache:** `flutterflow ai init` caches the key in
   `~/.flutterflow/credentials.json` only when it was typed at the prompt or passed
   via `--api-key`; keys from `FF_API_KEY` (this skill's path) are never persisted.
